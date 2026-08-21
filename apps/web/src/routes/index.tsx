@@ -134,9 +134,7 @@ function Header() {
     <header className="sticky top-0 z-40 border-b border-border bg-background/70 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <div className="flex items-center gap-3">
-          <span className="grid size-7 place-items-center rounded-md bg-primary/15 ring-1 ring-primary/30">
-            <ShieldCheck className="size-4 text-primary" />
-          </span>
+          <img src="/talos.png" alt="Talos" className="size-7 rounded-md object-contain" />
           <span className="mono text-sm font-semibold tracking-[0.3em]">TALOS</span>
           <XLayerBadge className="ml-1 hidden sm:inline-flex" />
         </div>
