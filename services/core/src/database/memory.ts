@@ -40,8 +40,10 @@ class MemNotes implements NotesRepository {
   async listByState(state: NoteState) {
     return [...this.m.values()].filter((n) => n.state === state).map((n) => ({ ...n }));
   }
-  async list(limit: number) {
-    return [...this.m.values()].slice(-limit).map((n) => ({ ...n }));
+  async list(limit: number, owner?: string) {
+    const all = [...this.m.values()];
+    const scoped = owner ? all.filter((n) => n.owner === owner.toLowerCase()) : all;
+    return scoped.slice(-limit).map((n) => ({ ...n }));
   }
   async update(n: Note) {
     this.m.set(n.id, { ...n });
