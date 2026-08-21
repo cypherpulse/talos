@@ -43,6 +43,33 @@ export class MerkleSynchronizer {
   }
 
   /**
+   * Read every `eventName` log from `fromBlock` to `head`, paged into ≤100-block
+   * windows. The X Layer RPC rejects an eth_getLogs whose range exceeds 100 blocks, so
+   * scanning the full history in one call fails — this walks it in bounded windows.
+   */
+  private async scanEvents(
+    eventName: "CommitmentInserted" | "NullifierSpent",
+    head: bigint,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<any[]> {
+    const WINDOW = 100n; // window span; range (to - from) stays below the 100-block cap
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const logs: any[] = [];
+    for (let from = this.fromBlock; from <= head; from += WINDOW) {
+      const to = from + WINDOW - 1n < head ? from + WINDOW - 1n : head;
+      const batch = await this.chain.publicClient.getContractEvents({
+        address: this.poolAddress,
+        abi: talosPoolAbi,
+        eventName,
+        fromBlock: from,
+        toBlock: to,
+      });
+      logs.push(...batch);
+    }
+    return logs;
+  }
+
+  /**
    * Full idempotent reconciliation from chain history. Reads ALL CommitmentInserted
    * and NullifierSpent events from the deployment block, upserts them into the repo
    * (dedup by commitment / nullifier), rebuilds the tree deterministically from the
@@ -58,20 +85,8 @@ export class MerkleSynchronizer {
     // it just absorbs RPC log-propagation lag deterministically.
     for (let attempt = 0; attempt < 15; attempt++) {
       const head = await this.chain.getBlockNumber();
-      const inserts = await this.chain.publicClient.getContractEvents({
-        address: this.poolAddress,
-        abi: talosPoolAbi,
-        eventName: "CommitmentInserted",
-        fromBlock: this.fromBlock,
-        toBlock: head,
-      });
-      const spends = await this.chain.publicClient.getContractEvents({
-        address: this.poolAddress,
-        abi: talosPoolAbi,
-        eventName: "NullifierSpent",
-        fromBlock: this.fromBlock,
-        toBlock: head,
-      });
+      const inserts = await this.scanEvents("CommitmentInserted", head);
+      const spends = await this.scanEvents("NullifierSpent", head);
 
       const ordered = [...inserts].sort((a, b) => Number((a.args.leafIndex ?? 0n) - (b.args.leafIndex ?? 0n)));
       for (const log of ordered) {
