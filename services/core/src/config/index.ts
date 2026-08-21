@@ -16,7 +16,7 @@ export const ConfigSchema = z.object({
 
   // Datastores
   databaseUrl: z.string().min(1),
-  redisUrl: z.string().min(1),
+  redisUrl: z.string().min(1).optional(),
 
   // X Layer (EVM)
   chain: z.object({
