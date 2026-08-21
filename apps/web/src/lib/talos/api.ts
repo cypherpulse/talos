@@ -33,7 +33,7 @@ export function explorerAddressUrl(address: string): string {
 export class TalosApiError extends Error {
   code: string;
   status: number;
-  details?: Record<string, unknown>;
+  details?: Record<string, unknown> | undefined;
 
   constructor(code: string, message: string, status: number, details?: Record<string, unknown>) {
     super(message);
@@ -47,8 +47,8 @@ export class TalosApiError extends Error {
 type RequestOptions = {
   method?: string;
   body?: unknown;
-  idempotencyKey?: string;
-  signal?: AbortSignal;
+  idempotencyKey?: string | undefined;
+  signal?: AbortSignal | undefined;
 };
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -57,14 +57,13 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
 
+  const init: RequestInit = { method, headers };
+  if (signal) init.signal = signal;
+  if (body !== undefined) init.body = JSON.stringify(body);
+
   let res: Response;
   try {
-    res = await fetch(`${API_BASE_URL}${path}`, {
-      method,
-      headers,
-      signal,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    res = await fetch(`${API_BASE_URL}${path}`, init);
   } catch {
     throw new TalosApiError(
       "NETWORK_ERROR",
