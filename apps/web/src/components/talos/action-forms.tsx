@@ -1,8 +1,21 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { talosApi, newIdempotencyKey } from "@/lib/talos/api";
-import { useAvailableNotes } from "@/lib/talos/hooks";
+import { useAvailableNotes, useTrackedOperations } from "@/lib/talos/hooks";
 import { useWallet } from "@/lib/talos/wallet";
+import { assetById, formatAssetAmount, useAssets } from "@/lib/talos/assets";
+import {
+  encodeApprove,
+  encodeDeposit,
+  ensureChain,
+  getInjected,
+  readAllowance,
+  readErc20Balance,
+  readNativeBalance,
+  sendTx,
+  waitForTx,
+} from "@/lib/talos/evm";
 import {
   ASSET_SYMBOL,
   formatUnits,
@@ -10,7 +23,8 @@ import {
   isValidValue,
   parseUnits,
 } from "@/lib/talos/format";
-import type { NotePublic } from "@/lib/talos/types";
+import type { Asset, NotePublic } from "@/lib/talos/types";
+import { AssetLogo } from "@/components/talos/asset-logo";
 import { EmptyState, ErrorState } from "@/components/talos/primitives";
 import { OperationTracker } from "@/components/talos/operation-tracker";
 import {
@@ -77,24 +91,153 @@ function useNotes(): { notes: NotePublic[] | undefined; isError: boolean; error:
 /* -------------------------------- Shield ------------------------------- */
 
 export function ShieldForm() {
-  const [amount, setAmount] = useState("");
-  const { operationId, submit, pending, error, reset } = useOperationSubmit();
-  const base = parseUnits(amount);
-  const valid = base !== null && isValidValue(base);
+  const { assets } = useAssets();
+  const { address } = useWallet();
+  const { track } = useTrackedOperations();
+  const queryClient = useQueryClient();
 
-  if (operationId) return <Result operationId={operationId} title="Shielding assets" onReset={() => { reset(); setAmount(""); }} />;
+  const [assetId, setAssetId] = useState(1);
+  const asset = assetById(assets, assetId);
+  const [amount, setAmount] = useState("");
+  const [step, setStep] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [operationId, setOperationId] = useState<string | null>(null);
+  const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
+
+  const base = parseUnits(amount, asset.decimals);
+  const valid = base !== null && isValidValue(base);
+  const pending = step !== null;
+
+  // Show the connected wallet's public balance for the selected asset.
+  useEffect(() => {
+    let cancelled = false;
+    setWalletBalance(null);
+    if (!address) return;
+    void (async () => {
+      try {
+        const bal = asset.isNative
+          ? await readNativeBalance(address)
+          : await readErc20Balance(asset.address, address);
+        if (!cancelled) setWalletBalance(bal);
+      } catch {
+        /* balance is best-effort */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, asset.assetId, asset.address, asset.isNative]);
+
+  const reset = () => {
+    setOperationId(null);
+    setAmount("");
+    setStep(null);
+    setError(null);
+  };
+
+  if (operationId)
+    return <Result operationId={operationId} title={`Shielding ${asset.symbol}`} onReset={reset} />;
+
+  const run = async () => {
+    setError(null);
+    if (!valid || base === null) return;
+    const provider = getInjected();
+    if (!provider || !address) {
+      setError("Connect a browser wallet first (top-right) — you sign and fund the deposit.");
+      return;
+    }
+    if (walletBalance !== null && BigInt(base) > walletBalance) {
+      setError(`Insufficient ${asset.symbol} balance in your wallet.`);
+      return;
+    }
+    try {
+      setStep("Preparing private note…");
+      const prep = await talosApi.depositPrepare(
+        { assetId, amount: base, owner: address },
+        newIdempotencyKey(),
+      );
+      await ensureChain(provider);
+
+      // ERC-20 assets need an allowance for the pool before it can pull the tokens.
+      if (!asset.isNative) {
+        setStep("Checking allowance…");
+        const allowance = await readAllowance(asset.address, address, prep.poolAddress);
+        if (allowance < BigInt(base)) {
+          setStep("Approve the token in your wallet…");
+          const approveTx = await sendTx(provider, {
+            from: address,
+            to: asset.address,
+            data: encodeApprove(prep.poolAddress, (1n << 256n) - 1n),
+          });
+          setStep("Waiting for approval…");
+          await waitForTx(approveTx);
+        }
+      }
+
+      setStep("Confirm the deposit in your wallet…");
+      const depositTx = await sendTx(provider, {
+        from: address,
+        to: prep.poolAddress,
+        data: encodeDeposit(BigInt(assetId), BigInt(base), BigInt(prep.commitment)),
+        value: asset.isNative ? BigInt(base) : 0n,
+      });
+
+      setStep("Finalizing on Talos…");
+      await talosApi.depositConfirm(prep.operationId, depositTx);
+      track(prep.operationId);
+      void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
+      setOperationId(prep.operationId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Shield failed");
+    } finally {
+      setStep(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
-      <Field label="Amount" hint={valid ? `= ${base} base units` : "Move the test asset into a private note"}>
+      <Field label="Asset" hint="Choose the token to shield into a private note">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {assets.map((a) => (
+            <button
+              key={a.assetId}
+              type="button"
+              onClick={() => setAssetId(a.assetId)}
+              className={cn(
+                "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition-colors",
+                a.assetId === assetId
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-border bg-surface/50 text-muted-foreground hover:border-primary/40",
+              )}
+            >
+              <AssetLogo asset={a} size={22} />
+              <span className="font-medium">{a.symbol}</span>
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <Field
+        label="Amount"
+        hint={
+          address && walletBalance !== null
+            ? `Wallet balance: ${formatAssetAmount(walletBalance, asset)} ${asset.symbol}`
+            : valid
+              ? `= ${base} base units`
+              : `Shield ${asset.symbol} into a private note`
+        }
+      >
         <AmountInput value={amount} onChange={setAmount} />
       </Field>
-      <SubmitButton
-        pending={pending}
-        disabled={!valid}
-        onClick={() => valid && submit(() => talosApi.deposit({ amount: base }, newIdempotencyKey()))}
-      >
-        Shield assets
+
+      {!address ? (
+        <p className="mono text-xs text-amber-500">
+          Connect your wallet (top-right) — you sign and fund the deposit yourself.
+        </p>
+      ) : null}
+
+      <SubmitButton pending={pending} disabled={!valid || !address} onClick={() => void run()}>
+        {pending ? (step ?? "Working…") : `Shield ${asset.symbol}`}
       </SubmitButton>
       {error ? <p className="mono text-xs text-destructive">{error}</p> : null}
     </div>
