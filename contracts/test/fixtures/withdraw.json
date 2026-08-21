@@ -1,0 +1,41 @@
+{
+  "op": "withdraw",
+  "depositCommitments": [
+    "0xfc63f19f9e417d925115fb4d6ffc76adb06bb20b3178c8b0cf70f5ad23a20b2"
+  ],
+  "depositAmounts": [
+    "0x64"
+  ],
+  "root": "0x22e1aded35a69d7827fcb515aeade7b9222a1e15c8201b52ed6a9fb9d1e99cc5",
+  "nullifier": "0x7b1ab5bd5417f420b05caa6778bb5b0d8488eae5058f7ebce248f37af6295d8",
+  "amount": "0x64",
+  "recipient": "0x000000000000000000000000000000000000B0B1",
+  "assetId": "0x1",
+  "proof": {
+    "a": [
+      "0x00828f9cc25e4b266fa8e89a6817b88c49222c3f4f15dd35d36d15edc0cd6098",
+      "0x2d3d589de6240aa0972ff1b18d9c2d1a0e4033e8cc206bd1fdf6594992f35bec"
+    ],
+    "b": [
+      [
+        "0x28364fb0506cf19a7e4e9c33173a1f64d0f063bb32dd601bfd727c064292915e",
+        "0x2e43c796f516f3443920b58cb00b3408086c382da6aa379fe8fe8491a65fafb8"
+      ],
+      [
+        "0x223ccf68e036148e3bdc3e8ec609d9decafeef63b4704c89dad2c683d32026ac",
+        "0x1912df342921626f2230484c2501b8c3ca3d7c77bc8a9e59a5f2c8286f64f41b"
+      ]
+    ],
+    "c": [
+      "0x2e6d81305382eb2edfda4b013c4531ece33a8551fed0f37bd399023a74c6e63f",
+      "0x2a2091f29ae1989d2d4a2de0159b40041936fc45732995bba7646f81678e2bbd"
+    ]
+  },
+  "publicSignals": [
+    "0x22e1aded35a69d7827fcb515aeade7b9222a1e15c8201b52ed6a9fb9d1e99cc5",
+    "0x7b1ab5bd5417f420b05caa6778bb5b0d8488eae5058f7ebce248f37af6295d8",
+    "0x64",
+    "0xb0b1",
+    "0x1"
+  ]
+}
