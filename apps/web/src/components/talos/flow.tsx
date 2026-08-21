@@ -37,10 +37,14 @@ export function FlowStrip({
       {nodes.map((node, i) => (
         <div key={node.label + i} className="flex flex-1 items-center gap-2">
           <motion.div
-            initial={shouldAnimate ? { opacity: 0, y: 8 } : false}
-            whileInView={shouldAnimate ? { opacity: 1, y: 0 } : undefined}
-            viewport={{ once: true, margin: "-40px" }}
-            transition={{ duration: 0.4, delay: i * 0.08 }}
+            {...(shouldAnimate
+              ? {
+                  initial: { opacity: 0, y: 8 },
+                  whileInView: { opacity: 1, y: 0 },
+                  viewport: { once: true, margin: "-40px" },
+                  transition: { duration: 0.4, delay: i * 0.08 },
+                }
+              : {})}
             className={cn(
               "flex-1 rounded-xl border px-3 py-2.5 text-center",
               toneClass[node.tone ?? "default"],
@@ -87,7 +91,7 @@ export function ProtocolFlow() {
     { label: "X Layer", sub: "settlement", tone: "primary" },
   ];
   return (
-    <div className="rounded-2xl border border-border bg-elevated p-4 shadow-[0_0_60px_-30px_rgba(47,226,138,0.55)]">
+    <div className="rounded-2xl border border-border bg-elevated p-4 shadow-[0_0_60px_-30px_rgba(164,249,29,0.55)]">
       <FlowStrip nodes={nodes} />
     </div>
   );
