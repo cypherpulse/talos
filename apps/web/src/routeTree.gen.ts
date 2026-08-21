@@ -10,33 +10,156 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/app'
+import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppActivityRouteImport } from './routes/app/activity'
+import { Route as AppAgentRouteImport } from './routes/app/agent'
+import { Route as AppMergeRouteImport } from './routes/app/merge'
+import { Route as AppShieldRouteImport } from './routes/app/shield'
+import { Route as AppSplitRouteImport } from './routes/app/split'
+import { Route as AppTransferRouteImport } from './routes/app/transfer'
+import { Route as AppWithdrawRouteImport } from './routes/app/withdraw'
+import { Route as AppActivityOperationIdRouteImport } from './routes/app/activity.$operationId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppActivityRoute = AppActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAgentRoute = AppAgentRouteImport.update({
+  id: '/agent',
+  path: '/agent',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMergeRoute = AppMergeRouteImport.update({
+  id: '/merge',
+  path: '/merge',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppShieldRoute = AppShieldRouteImport.update({
+  id: '/shield',
+  path: '/shield',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSplitRoute = AppSplitRouteImport.update({
+  id: '/split',
+  path: '/split',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTransferRoute = AppTransferRouteImport.update({
+  id: '/transfer',
+  path: '/transfer',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppWithdrawRoute = AppWithdrawRouteImport.update({
+  id: '/withdraw',
+  path: '/withdraw',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppActivityOperationIdRoute = AppActivityOperationIdRouteImport.update({
+  id: '/$operationId',
+  path: '/$operationId',
+  getParentRoute: () => AppActivityRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/app': typeof AppRouteWithChildren
+  '/app/activity': typeof AppActivityRouteWithChildren
+  '/app/agent': typeof AppAgentRoute
+  '/app/merge': typeof AppMergeRoute
+  '/app/shield': typeof AppShieldRoute
+  '/app/split': typeof AppSplitRoute
+  '/app/transfer': typeof AppTransferRoute
+  '/app/withdraw': typeof AppWithdrawRoute
+  '/app/': typeof AppIndexRoute
+  '/app/activity/$operationId': typeof AppActivityOperationIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/app/activity': typeof AppActivityRouteWithChildren
+  '/app/agent': typeof AppAgentRoute
+  '/app/merge': typeof AppMergeRoute
+  '/app/shield': typeof AppShieldRoute
+  '/app/split': typeof AppSplitRoute
+  '/app/transfer': typeof AppTransferRoute
+  '/app/withdraw': typeof AppWithdrawRoute
+  '/app': typeof AppIndexRoute
+  '/app/activity/$operationId': typeof AppActivityOperationIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/app': typeof AppRouteWithChildren
+  '/app/activity': typeof AppActivityRouteWithChildren
+  '/app/agent': typeof AppAgentRoute
+  '/app/merge': typeof AppMergeRoute
+  '/app/shield': typeof AppShieldRoute
+  '/app/split': typeof AppSplitRoute
+  '/app/transfer': typeof AppTransferRoute
+  '/app/withdraw': typeof AppWithdrawRoute
+  '/app/': typeof AppIndexRoute
+  '/app/activity/$operationId': typeof AppActivityOperationIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/app'
+    | '/app/activity'
+    | '/app/agent'
+    | '/app/merge'
+    | '/app/shield'
+    | '/app/split'
+    | '/app/transfer'
+    | '/app/withdraw'
+    | '/app/'
+    | '/app/activity/$operationId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/app/activity'
+    | '/app/agent'
+    | '/app/merge'
+    | '/app/shield'
+    | '/app/split'
+    | '/app/transfer'
+    | '/app/withdraw'
+    | '/app'
+    | '/app/activity/$operationId'
+  id:
+    | '__root__'
+    | '/'
+    | '/app'
+    | '/app/activity'
+    | '/app/agent'
+    | '/app/merge'
+    | '/app/shield'
+    | '/app/split'
+    | '/app/transfer'
+    | '/app/withdraw'
+    | '/app/'
+    | '/app/activity/$operationId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +171,118 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app/': {
+      id: '/app/'
+      path: '/'
+      fullPath: '/app/'
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/activity': {
+      id: '/app/activity'
+      path: '/activity'
+      fullPath: '/app/activity'
+      preLoaderRoute: typeof AppActivityRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/agent': {
+      id: '/app/agent'
+      path: '/agent'
+      fullPath: '/app/agent'
+      preLoaderRoute: typeof AppAgentRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/merge': {
+      id: '/app/merge'
+      path: '/merge'
+      fullPath: '/app/merge'
+      preLoaderRoute: typeof AppMergeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/shield': {
+      id: '/app/shield'
+      path: '/shield'
+      fullPath: '/app/shield'
+      preLoaderRoute: typeof AppShieldRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/split': {
+      id: '/app/split'
+      path: '/split'
+      fullPath: '/app/split'
+      preLoaderRoute: typeof AppSplitRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/transfer': {
+      id: '/app/transfer'
+      path: '/transfer'
+      fullPath: '/app/transfer'
+      preLoaderRoute: typeof AppTransferRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/withdraw': {
+      id: '/app/withdraw'
+      path: '/withdraw'
+      fullPath: '/app/withdraw'
+      preLoaderRoute: typeof AppWithdrawRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/activity/$operationId': {
+      id: '/app/activity/$operationId'
+      path: '/$operationId'
+      fullPath: '/app/activity/$operationId'
+      preLoaderRoute: typeof AppActivityOperationIdRouteImport
+      parentRoute: typeof AppActivityRoute
+    }
   }
 }
 
+interface AppActivityRouteChildren {
+  AppActivityOperationIdRoute: typeof AppActivityOperationIdRoute
+}
+
+const AppActivityRouteChildren: AppActivityRouteChildren = {
+  AppActivityOperationIdRoute: AppActivityOperationIdRoute,
+}
+
+const AppActivityRouteWithChildren = AppActivityRoute._addFileChildren(
+  AppActivityRouteChildren,
+)
+
+interface AppRouteChildren {
+  AppActivityRoute: typeof AppActivityRouteWithChildren
+  AppAgentRoute: typeof AppAgentRoute
+  AppMergeRoute: typeof AppMergeRoute
+  AppShieldRoute: typeof AppShieldRoute
+  AppSplitRoute: typeof AppSplitRoute
+  AppTransferRoute: typeof AppTransferRoute
+  AppWithdrawRoute: typeof AppWithdrawRoute
+  AppIndexRoute: typeof AppIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppActivityRoute: AppActivityRouteWithChildren,
+  AppAgentRoute: AppAgentRoute,
+  AppMergeRoute: AppMergeRoute,
+  AppShieldRoute: AppShieldRoute,
+  AppSplitRoute: AppSplitRoute,
+  AppTransferRoute: AppTransferRoute,
+  AppWithdrawRoute: AppWithdrawRoute,
+  AppIndexRoute: AppIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
