@@ -5,7 +5,7 @@
 # instead of 404-ing (static files still take precedence over the redirect).
 
 [build]
-  command = "pnpm install --no-frozen-lockfile && pnpm --filter @talos/web build "
+  command = "pnpm install --no-frozen-lockfile && pnpm build"
   publish = "apps/web/dist/client"
 
 [build.environment]
