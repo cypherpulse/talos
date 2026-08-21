@@ -1,0 +1,87 @@
+{
+  "description": "Talos Poseidon/commitment/nullifier/Merkle test vectors (BN254). Synthetic values.",
+  "field_size": "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+  "zero_value": "0x690d5549b641a93200f57d5dff1c979ffbb084c3b78d4bf51ed712f2dd431f",
+  "poseidon2": {
+    "inputs": [
+      "0x3039",
+      "0x10932"
+    ],
+    "output": "0x1914879b2a4e7f9555f3eb55837243cefb1366a692794a7e5b5b3181fb14b49b"
+  },
+  "ownerPubKey": {
+    "sk": "0x6f",
+    "output": "0x1d937778c1825d2a9d931b6e9034407cac9725b446a6d57a469fac870823be8e"
+  },
+  "commitment": {
+    "note": {
+      "assetId": "0x1",
+      "value": "0x64",
+      "ownerPubKey": "0x1d937778c1825d2a9d931b6e9034407cac9725b446a6d57a469fac870823be8e",
+      "secret": "0xde",
+      "nonce": "0x14d"
+    },
+    "output": "0x23184c4755b7c74c35edb8f163dcb3515e036d0cc8a0c2949e86420dfa8d51a9"
+  },
+  "nullifier": {
+    "nullifierSecret": "0x6f",
+    "secret": "0xde",
+    "output": "0x2d888d8cb35bbb41d435db55d46e55a6996049e2b4a44ce1483101b572c6bd83"
+  },
+  "merkle": {
+    "depth": 20,
+    "leaves": [
+      "0x23184c4755b7c74c35edb8f163dcb3515e036d0cc8a0c2949e86420dfa8d51a9",
+      "0x115c",
+      "0x15b3"
+    ],
+    "root": "0xfbcff309fa5f9257fad28e351dfb0bdb6f9a7c320d959ee7e8e75e718c4632e",
+    "proofForLeaf0": {
+      "leaf": "0x23184c4755b7c74c35edb8f163dcb3515e036d0cc8a0c2949e86420dfa8d51a9",
+      "pathElements": [
+        "0x115c",
+        "0x1d8f44a76d92b6fd3352bc600028bf8f54d114c1b6be524c65875ecfd456d4b8",
+        "0x3029c6a0138e0a5bcbc3f7017ad7b3ea87565cd3e063de693d5ec00c70901b17",
+        "0x1726ad7e754880d699b77573a83c250bea0ed843e103cebb6c42069b254413b8",
+        "0x123844c02a2400c4e6dc0ae4d900a9aabd86d2ef7ec0af8a6579901e67dfe862",
+        "0xf1389fa80dcf0355f23f3ce11852e98c84448030431bd63de4954cde9813426",
+        "0x200d6a7ab04425183942e5a96d4b3cdaedb3cbf56663aee923809c6702432086",
+        "0x11fa5f60821082070a0d1d2c20cce87cabb80cf85aeb8ce4e4245e41f23bcf20",
+        "0x2fa850257dc5f8ee64258718f4d8afc4e58707dc35b775671f7b702f18331a97",
+        "0x3c4ade6569f46bcdc0d84f72a08e6ae26636bdf8f5238d82ea184b63b5e2ac9",
+        "0x28ebd747813cde3d834477fd515a8810c0e64f6eebe7f3fa8fb016d148a7b5b8",
+        "0x1fd2cb0e7151f1028b89a5300afa34957f9f0ee7e421d8500bf14da0f487bd8f",
+        "0x10972c76e38aa37d3559b031576c2f719649cb17e1e98099eaae970e8cdd4d16",
+        "0x151b97b486a444909aa7b7edba66ef1ba4b157f846c04608d12649f7fba4d9d1",
+        "0xbb233ae01eae028f89de6e3618fde7e6a330876e167b6ee7a4f404f08cf3dd1",
+        "0x12fef1cc8b07e9921a0c20700c02ef6bb17d1829604d7a87382652c01a383d7c",
+        "0x1bd0c1f35952e584a4e3ff07de4b85f1df53ad303cf82a2108c36dcb884eb05e",
+        "0xa0d5d8806e8309f0a9868b0e4d3d1542b3dfbaa727eeb83569cfddda806f657",
+        "0x2c33b780ad32b0e8b77c961488b74ea31c06884113b741fa56847ade19ee21bc",
+        "0x9651bedb7f786db5005f161f0f72c3c510d49d4f631a96a748c8d292951add4"
+      ],
+      "pathIndices": [
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0",
+        "0x0"
+      ]
+    }
+  }
+}
