@@ -1,0 +1,39 @@
+{
+  "op": "split",
+  "depositCommitments": [
+    "0x1c917571999749565f67bf6971f5e262649f923a9f04d1cc48c9b5443dfbb571"
+  ],
+  "depositAmounts": [
+    "0x64"
+  ],
+  "root": "0xce37fb7114b4da34ed121c02c52217f5db040733e9c405e4e83532900ab277d",
+  "nullifier": "0x16b940a215e465eb30edd684203646699c5f4199c6cd630b03ecd94505ae6f91",
+  "outCommitment1": "0x1772f06e83a822bcc0f8a18328e44323ef6eb2e6e40bc52060619edfaa01441d",
+  "outCommitment2": "0x18318838afd55b0084eb1ef5f6c2bea72cdac2dc9e6f4bd0c5e70fcbc0800ae4",
+  "proof": {
+    "a": [
+      "0x2ebf216d928e7cadb7184c2faee34c501758e672f890371dcf72fe66c9f538c7",
+      "0x1bb47161d826731cb2aa808aaec9ff2a9c6cab8233c126e95fb3cd7d1f4a9d27"
+    ],
+    "b": [
+      [
+        "0x0d25477b9c9860a80dfc289611fd5955dc8fa7120849f30e356d01a3bd4a4e9c",
+        "0x237af4e80fe62941ce21f187a0d5239554dbd731c1919aeae951d46632c58c5c"
+      ],
+      [
+        "0x1782191f9db80019c81cb55cb87b5f42c13a6a1928fd9625be81af64876eae80",
+        "0x0f0693fa2a6ef1622bb4e4b9184c1d4cb7e2b3fad5a503bb8d00c55191699ad6"
+      ]
+    ],
+    "c": [
+      "0x024fa59dedaf4e2f04c7d4187e01e9562fc869fb3fa363d85a7d1b71a24854f3",
+      "0x03bc65683a1061a4ce166be9b81f74a1abece76eba07f32e312b3f6b72227d7f"
+    ]
+  },
+  "publicSignals": [
+    "0xce37fb7114b4da34ed121c02c52217f5db040733e9c405e4e83532900ab277d",
+    "0x16b940a215e465eb30edd684203646699c5f4199c6cd630b03ecd94505ae6f91",
+    "0x1772f06e83a822bcc0f8a18328e44323ef6eb2e6e40bc52060619edfaa01441d",
+    "0x18318838afd55b0084eb1ef5f6c2bea72cdac2dc9e6f4bd0c5e70fcbc0800ae4"
+  ]
+}
