@@ -45,9 +45,10 @@ async function main(): Promise<void> {
   const encryption = new NoteEncryptionService(config.noteEncryptionKey);
   const repos = createPostgresRepositories(db, encryption);
 
-  const redis = createRedisConnection(config.redisUrl);
+  const redisUrl = config.redisUrl ?? "redis://localhost:6379";
+  const redis = createRedisConnection(redisUrl);
   const locks = new RedisLockService(redis);
-  const queueConnection = createRedisConnection(config.redisUrl);
+  const queueConnection = createRedisConnection(redisUrl);
   const queue = createOperationsQueue(queueConnection);
 
   // Start the event scan at the pool's deployment block (scanning from 0 is wasteful
