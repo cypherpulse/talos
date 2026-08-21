@@ -18,6 +18,7 @@ out/
 *.key
 *.pem
 secrets/
+keys.md
 *.ps1
 
 # Foundry
