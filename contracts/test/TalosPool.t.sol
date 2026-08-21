@@ -5,7 +5,7 @@ import {TalosTestBase} from "./TalosTestBase.t.sol";
 import {TalosPool} from "../src/TalosPool.sol";
 import {ITalosPool} from "../src/interfaces/ITalosPool.sol";
 import {ITalosVerifier} from "../src/interfaces/ITalosVerifier.sol";
-import {IERC20} from "../src/interfaces/IERC20.sol";
+import {ITalosAssetRegistry} from "../src/interfaces/ITalosAssetRegistry.sol";
 import {IHasher} from "../src/interfaces/IHasher.sol";
 import {TalosTypes} from "../src/TalosTypes.sol";
 import {MockVerifier} from "./mocks/MockVerifier.sol";
@@ -165,7 +165,7 @@ contract TalosPoolTest is TalosTestBase {
 
     function test_Transfer_RevertsWhenVerifierUnset() public {
         // Fresh pool with no verifiers configured.
-        TalosPool bare = new TalosPool(IERC20(address(token)), IHasher(address(hasher)), owner);
+        TalosPool bare = new TalosPool(ITalosAssetRegistry(address(registry)), IHasher(address(hasher)), owner);
         uint256 root = bare.getLastRoot();
         vm.expectRevert(Talos__InvalidVerifier.selector);
         bare.transfer(_proof(), root, _fe(), _fe(), _fe());
@@ -397,13 +397,13 @@ contract TalosPoolTest is TalosTestBase {
 
     function test_Security_ConstructorRejectsZeroArgs() public {
         vm.expectRevert(Talos__InvalidParameters.selector);
-        new TalosPool(IERC20(address(0)), IHasher(address(hasher)), owner);
+        new TalosPool(ITalosAssetRegistry(address(0)), IHasher(address(hasher)), owner);
 
         vm.expectRevert(Talos__InvalidParameters.selector);
-        new TalosPool(IERC20(address(token)), IHasher(address(0)), owner);
+        new TalosPool(ITalosAssetRegistry(address(registry)), IHasher(address(0)), owner);
 
         vm.expectRevert(Talos__InvalidParameters.selector);
-        new TalosPool(IERC20(address(token)), IHasher(address(hasher)), address(0));
+        new TalosPool(ITalosAssetRegistry(address(registry)), IHasher(address(hasher)), address(0));
     }
 
     /// @dev Fuzz: any canonical, nonzero, unique commitment deposits successfully.
