@@ -4,10 +4,11 @@ pragma solidity 0.8.30;
 import {Test} from "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {TalosPool} from "../src/TalosPool.sol";
+import {TalosAssetRegistry} from "../src/TalosAssetRegistry.sol";
 import {TalosVerifier} from "../src/TalosVerifier.sol";
 import {ITalosVerifier} from "../src/interfaces/ITalosVerifier.sol";
+import {ITalosAssetRegistry} from "../src/interfaces/ITalosAssetRegistry.sol";
 import {IHasher} from "../src/interfaces/IHasher.sol";
-import {IERC20} from "../src/interfaces/IERC20.sol";
 import {TalosTypes} from "../src/TalosTypes.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {DepositVerifier} from "../src/verifiers/DepositVerifier.sol";
@@ -43,7 +44,9 @@ contract TalosE2ETest is Test {
     function setUp() public {
         token = new MockERC20();
         hasher = IHasher(_deployPoseidon());
-        pool = new TalosPool(IERC20(address(token)), hasher, owner);
+        TalosAssetRegistry registry = new TalosAssetRegistry(owner);
+        registry.registerAsset(TalosTypes.ASSET_ID, address(token), false, "tUSDC", 6);
+        pool = new TalosPool(ITalosAssetRegistry(address(registry)), hasher, owner);
 
         // Wire the REAL generated Groth16 verifiers behind the adapter, per op.
         pool.setVerifier(
