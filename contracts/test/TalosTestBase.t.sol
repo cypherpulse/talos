@@ -3,8 +3,9 @@ pragma solidity 0.8.30;
 
 import {Test} from "forge-std/Test.sol";
 import {TalosPool} from "../src/TalosPool.sol";
+import {TalosAssetRegistry} from "../src/TalosAssetRegistry.sol";
 import {ITalosVerifier} from "../src/interfaces/ITalosVerifier.sol";
-import {IERC20} from "../src/interfaces/IERC20.sol";
+import {ITalosAssetRegistry} from "../src/interfaces/ITalosAssetRegistry.sol";
 import {IHasher} from "../src/interfaces/IHasher.sol";
 import {TalosTypes} from "../src/TalosTypes.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -27,6 +28,7 @@ abstract contract TalosTestBase is Test {
     MockERC20 internal token;
     TestPoseidonHasher internal hasher;
     MockVerifier internal verifier;
+    TalosAssetRegistry internal registry;
     TalosPool internal pool;
 
     address internal owner = address(this);
@@ -47,7 +49,9 @@ abstract contract TalosTestBase is Test {
         token = new MockERC20();
         hasher = new TestPoseidonHasher();
         verifier = new MockVerifier(true); // default: accept proofs
-        pool = new TalosPool(IERC20(address(token)), IHasher(address(hasher)), owner);
+        registry = new TalosAssetRegistry(owner);
+        registry.registerAsset(TalosTypes.ASSET_ID, address(token), false, "tUSDC", 6);
+        pool = new TalosPool(ITalosAssetRegistry(address(registry)), IHasher(address(hasher)), owner);
 
         pool.setVerifier(TalosTypes.Operation.Transfer, ITalosVerifier(address(verifier)));
         pool.setVerifier(TalosTypes.Operation.Split, ITalosVerifier(address(verifier)));
