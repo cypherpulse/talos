@@ -14,6 +14,7 @@ export interface CreateNoteParams {
   sk?: bigint; // spending key; generated if absent
   secret?: bigint;
   nonce?: bigint;
+  owner?: string; // wallet address that owns this note (per-user scoping)
 }
 
 /**
@@ -52,6 +53,7 @@ export class NoteManager {
       nullifier: nullifier.toString(),
       state: "CREATED",
       leafIndex: null,
+      owner: params.owner ? params.owner.toLowerCase() : null,
       createdAt: now,
       updatedAt: now,
     };
@@ -83,6 +85,7 @@ export class NoteManager {
       commitment: commitment.toString(),
       state: "CREATED",
       leafIndex: null,
+      owner: null, // counterparty note — not owned by any local wallet
       createdAt: now,
       updatedAt: now,
     };
