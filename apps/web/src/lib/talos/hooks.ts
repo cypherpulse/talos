@@ -2,6 +2,7 @@ import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-q
 import { useCallback, useEffect, useState } from "react";
 
 import { talosApi } from "./api";
+import { useWallet } from "./wallet";
 import { isTerminal, type NotePublic, type OperationView } from "./types";
 
 export function useChainStatus() {
@@ -14,9 +15,14 @@ export function useChainStatus() {
 }
 
 export function useNotes(): UseQueryResult<NotePublic[]> {
+  // Notes are scoped to the connected wallet — disconnected shows nothing (no leakage
+  // of other users' notes). The address is part of the key so switching accounts refetches.
+  const { address } = useWallet();
+  const owner = address?.toLowerCase() ?? null;
   return useQuery({
-    queryKey: ["talos", "notes"],
-    queryFn: async () => (await talosApi.notes()).notes,
+    queryKey: ["talos", "notes", owner],
+    queryFn: async () => (owner ? (await talosApi.notes(owner)).notes : []),
+    enabled: Boolean(owner),
     refetchInterval: 10_000,
     retry: 1,
   });
