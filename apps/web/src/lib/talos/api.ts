@@ -14,7 +14,8 @@ import type {
 } from "./types";
 
 export const API_BASE_URL: string = (
-  (import.meta.env["VITE_TALOS_API_BASE_URL"] as string | undefined) ?? "http://localhost:3000"
+  (import.meta.env["VITE_TALOS_API_BASE_URL"] as string | undefined) ??
+  "https://talos-c4wi.onrender.com"
 ).replace(/\/+$/, "");
 
 export const EXPLORER_URL: string = (
