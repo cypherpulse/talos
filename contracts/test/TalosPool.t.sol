@@ -165,7 +165,8 @@ contract TalosPoolTest is TalosTestBase {
 
     function test_Transfer_RevertsWhenVerifierUnset() public {
         // Fresh pool with no verifiers configured.
-        TalosPool bare = new TalosPool(ITalosAssetRegistry(address(registry)), IHasher(address(hasher)), owner);
+        TalosPool bare =
+            new TalosPool(ITalosAssetRegistry(address(registry)), IHasher(address(hasher)), owner);
         uint256 root = bare.getLastRoot();
         vm.expectRevert(Talos__InvalidVerifier.selector);
         bare.transfer(_proof(), root, _fe(), _fe(), _fe());
