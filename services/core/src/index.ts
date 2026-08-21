@@ -1,5 +1,16 @@
+import { existsSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { loadConfig } from "./config/index.js";
+
+// Repo root, resolved from this module (src → core → services → root) so the server
+// runs correctly regardless of the current working directory.
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+
+// Load the root .env before reading config (Node built-in; no dependency).
+const ENV_FILE = join(REPO_ROOT, ".env");
+if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 import { createLogger } from "./observability/logger.js";
 import { createDb } from "./database/connection.js";
 import { migrate } from "./database/migrate.js";
@@ -23,6 +34,10 @@ import {
  */
 async function main(): Promise<void> {
   const config = loadConfig();
+  // Resolve a relative circuit-artifacts dir against the repo root (cwd-independent).
+  if (!isAbsolute(config.circuitArtifactsDir)) {
+    config.circuitArtifactsDir = resolve(REPO_ROOT, config.circuitArtifactsDir);
+  }
   const logger = createLogger({ service: "talos-core" });
 
   await migrate(config.databaseUrl);
@@ -35,11 +50,16 @@ async function main(): Promise<void> {
   const queueConnection = createRedisConnection(config.redisUrl);
   const queue = createOperationsQueue(queueConnection);
 
+  // Start the event scan at the pool's deployment block (scanning from 0 is wasteful
+  // and the RPC caps eth_getLogs at a 100-block range — see MerkleSynchronizer).
+  const fromBlock = process.env.SYNC_FROM_BLOCK ? BigInt(process.env.SYNC_FROM_BLOCK) : 0n;
+
   const services = buildServices({
     config,
     repos,
     logger,
     locks,
+    fromBlock,
     dispatcherFactory: () => new BullMqDispatcher(queue),
   });
 
