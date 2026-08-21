@@ -19,6 +19,9 @@ export const notes = pgTable(
     state: text("state").notNull(),
     leafIndex: integer("leaf_index"),
     secretBlob: text("secret_blob").notNull(),
+    // Lowercased wallet address that shielded/owns this note (per-user scoping). Null
+    // for legacy/unscoped notes.
+    owner: text("owner"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
