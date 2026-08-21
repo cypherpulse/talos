@@ -13,29 +13,7 @@ $modifiedFiles = ($modifiedUnstaged + $modifiedStaged) | Select-Object -Unique
 $allFiles = ($untrackedFiles + $modifiedFiles) | Select-Object -Unique
 
 # Comprehensive commit message for Hermes Bridge project
-$commitMessage = "feat: add end-to-end harness for Talos contracts deployment and testing
-
-feat: implement PostgreSQL integration tests for repositories
-
-test: add unit tests for NoteEncryptionService
-
-test: add unit tests for TalosGuard policy enforcement
-
-test: add unit tests for idempotency in operation creation
-
-test: add unit tests for Merkle tree functionality
-
-test: add unit tests for state machine transitions
-
-chore: add TypeScript configuration for core service
-
-chore: initialize indexer service with basic structure
-
-chore: initialize relayer service with basic structure
-
-chore: add root TypeScript configuration
-
-chore: add Turbo configuration for build and test tasks"
+$commitMessage = "feat: Adding asset registry and improving the UI"
 
 # Commit each file individually
 foreach ($file in $allFiles) {
