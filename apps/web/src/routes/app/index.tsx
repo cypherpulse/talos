@@ -18,7 +18,9 @@ import {
   usePrivateBalance,
   useTrackedOperations,
 } from "@/lib/talos/hooks";
-import { ASSET_SYMBOL, formatUnits, formatTime } from "@/lib/talos/format";
+import { formatTime } from "@/lib/talos/format";
+import { assetById, formatAssetAmount, shieldedBalances, useAssets } from "@/lib/talos/assets";
+import { AssetLogo } from "@/components/talos/asset-logo";
 import {
   EmptyState,
   ErrorState,
@@ -61,14 +63,9 @@ function Dashboard() {
 }
 
 function BalanceCard() {
-  const { total, noteCount, available, isLoading, isError, error, refetch } = usePrivateBalance();
-  const totalBig = available.reduce((a, n) => {
-    try {
-      return a + BigInt(n.value);
-    } catch {
-      return a;
-    }
-  }, 0n);
+  const { available, noteCount, isLoading, isError, error, refetch } = usePrivateBalance();
+  const { assets } = useAssets();
+  const balances = shieldedBalances(available, assets);
 
   return (
     <GlassCard glow className="relative overflow-hidden lg:col-span-2">
@@ -80,37 +77,41 @@ function BalanceCard() {
         </div>
       ) : (
         <>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-5xl font-semibold tracking-tight text-foreground">
-              {isLoading ? "—" : formatUnits(total)}
-            </span>
-            <span className="mono text-sm text-muted-foreground">{ASSET_SYMBOL}</span>
-          </div>
           <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
             <Boxes className="size-4 text-primary" />
-            {noteCount} available {noteCount === 1 ? "note" : "notes"}
+            {noteCount} shielded {noteCount === 1 ? "note" : "notes"} across {balances.length || 0}{" "}
+            {balances.length === 1 ? "asset" : "assets"}
           </p>
 
-          {/* note distribution bar */}
-          {available.length > 0 && totalBig > 0n ? (
-            <div className="mt-5 flex h-2 gap-0.5 overflow-hidden rounded-full">
-              {available.map((n, i) => {
-                const pct = Number((BigInt(n.value) * 1000n) / totalBig) / 10;
-                return (
-                  <span
-                    key={n.id}
-                    title={`${formatUnits(n.value)} ${ASSET_SYMBOL}`}
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${pct}%`,
-                      background:
-                        i % 2 === 0 ? "var(--primary)" : "color-mix(in srgb, var(--primary) 55%, transparent)",
-                    }}
-                  />
-                );
-              })}
-            </div>
-          ) : null}
+          <div className="mt-4 space-y-2">
+            {isLoading ? (
+              <span className="text-4xl font-semibold tracking-tight text-muted-foreground">—</span>
+            ) : balances.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No shielded balance yet. Shield an asset to create your first private note.
+              </p>
+            ) : (
+              balances.map(({ asset, total, count }) => (
+                <div
+                  key={asset.assetId}
+                  className="glass-2 flex items-center justify-between rounded-xl px-3.5 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <AssetLogo asset={asset} size={34} />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{asset.symbol}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {count} {count === 1 ? "note" : "notes"}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-2xl font-semibold tracking-tight text-foreground">
+                    {formatAssetAmount(total, asset)}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
 
           <div className="mt-6 flex flex-wrap gap-2">
             <Link
@@ -219,6 +220,7 @@ function QuickActions() {
 
 function NotesCard() {
   const { available, isLoading, isError, error, refetch } = usePrivateBalance();
+  const { assets } = useAssets();
   return (
     <GlassCard>
       <SectionLabel>Private notes</SectionLabel>
@@ -231,10 +233,16 @@ function NotesCard() {
           <EmptyState title="No private notes yet" description="Shield your first asset to start using Talos." />
         ) : (
           <div className="grid gap-2.5 sm:grid-cols-2">
-            {available.map((n) => (
+            {available.map((n) => {
+              const asset = assetById(assets, n.assetId);
+              return (
               <div key={n.id} className="glass-2 rounded-xl px-3.5 py-3">
                 <div className="flex items-baseline justify-between">
-                  <span className="text-lg font-semibold text-foreground">{formatUnits(n.value)}</span>
+                  <span className="flex items-baseline gap-1.5 text-lg font-semibold text-foreground">
+                    <AssetLogo asset={asset} size={18} className="self-center" />
+                    {formatAssetAmount(n.value, asset)}
+                    <span className="mono text-[11px] text-muted-foreground">{asset.symbol}</span>
+                  </span>
                   <StatusPill status="AVAILABLE" label="available" />
                 </div>
                 <div className="mt-2 flex items-center justify-between">
@@ -244,7 +252,8 @@ function NotesCard() {
                   <HashChip value={n.commitment} head={6} tail={4} />
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
