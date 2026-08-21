@@ -44,7 +44,11 @@ contract TalosAssetRegistry {
 
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event AssetRegistered(
-        uint256 indexed assetId, address indexed token, bool isNative, bytes32 symbol, uint8 decimals
+        uint256 indexed assetId,
+        address indexed token,
+        bool isNative,
+        bytes32 symbol,
+        uint8 decimals
     );
 
     modifier onlyOwner() {
@@ -66,11 +70,16 @@ contract TalosAssetRegistry {
      * @param symbol Short symbol for identification (e.g. "USDC").
      * @param decimals Token decimals for off-chain scaling.
      */
-    function registerAsset(uint256 assetId, address token, bool isNative, bytes32 symbol, uint8 decimals)
-        external
-        onlyOwner
-    {
-        if (assetId == 0 || assetId >= TalosTypes.FIELD_SIZE) revert Talos__InvalidAsset();
+    function registerAsset(
+        uint256 assetId,
+        address token,
+        bool isNative,
+        bytes32 symbol,
+        uint8 decimals
+    ) external onlyOwner {
+        if (assetId == 0 || assetId >= TalosTypes.FIELD_SIZE) {
+            revert Talos__InvalidAsset();
+        }
         if (assets[assetId].registered) revert Talos__InvalidAsset();
 
         if (isNative) {
@@ -83,8 +92,9 @@ contract TalosAssetRegistry {
             assetIdByToken[token] = assetId;
         }
 
-        assets[assetId] =
-            AssetConfig({token: token, decimals: decimals, isNative: isNative, registered: true, symbol: symbol});
+        assets[assetId] = AssetConfig({
+            token: token, decimals: decimals, isNative: isNative, registered: true, symbol: symbol
+        });
         emit AssetRegistered(assetId, token, isNative, symbol, decimals);
     }
 
