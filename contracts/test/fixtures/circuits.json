@@ -1,0 +1,9 @@
+{
+  "publicSignalCounts": {
+    "deposit": 3,
+    "transfer": 4,
+    "split": 4,
+    "merge": 4,
+    "withdraw": 5
+  }
+}
