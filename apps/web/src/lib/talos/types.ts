@@ -77,6 +77,32 @@ export interface OperationAck {
   status: OperationStatus;
 }
 
+export interface Asset {
+  assetId: number;
+  symbol: string;
+  name: string;
+  address: string;
+  decimals: number;
+  isNative: boolean;
+  color: string;
+  logo: string;
+}
+
+export interface AssetsResponse {
+  chainId: number;
+  poolAddress: string;
+  assets: Asset[];
+}
+
+export interface DepositPrepareResponse {
+  operationId: string;
+  status: OperationStatus;
+  commitment: string;
+  asset: Asset;
+  poolAddress: string;
+  chainId: number;
+}
+
 export type GuardDecision = "APPROVED" | "REJECTED" | "APPROVAL_REQUIRED";
 
 export interface GuardDecisionRecord {
