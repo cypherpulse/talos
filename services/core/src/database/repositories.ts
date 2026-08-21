@@ -13,7 +13,8 @@ export interface NotesRepository {
   getByCommitment(commitment: string): Promise<Note | null>;
   getByNullifier(nullifier: string): Promise<Note | null>;
   listByState(state: NoteState): Promise<Note[]>;
-  list(limit: number): Promise<Note[]>;
+  /** List notes, most recent first; when `owner` is given, only that wallet's notes. */
+  list(limit: number, owner?: string): Promise<Note[]>;
   update(note: Note): Promise<Note>;
 }
 
