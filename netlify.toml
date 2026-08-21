@@ -1,22 +1,9 @@
-# Netlify deployment for the Talos web app (pnpm monorepo, TanStack Start SPA mode).
-#
-# The app builds to apps/web/dist/client with a prerendered SPA shell (_shell.html).
-# The catch-all redirect serves that shell for every client route so deep links resolve
-# instead of 404-ing (static files still take precedence over the redirect).
-
 [build]
-  command = "pnpm install --no-frozen-lockfile && pnpm --filter @talos/web build"
-  publish = "apps/web/dist/client"
+  command = "pnpm run build"
+  publish = "dist/client"
 
 [build.environment]
-  NODE_VERSION = "20"
-  # X Layer testnet — safe to expose (VITE_ vars are public by design).
-  VITE_CHAIN_ID = "1952"
-  VITE_XLAYER_RPC_URL = "https://testrpc.xlayer.tech/terigon"
-  VITE_XLAYER_EXPLORER_URL = "https://www.oklink.com/xlayer-test"
-  # Point this at your deployed Core Server. Override in the Netlify UI for production;
-  # the app falls back to http://localhost:3000 for local development.
-  # VITE_TALOS_API_BASE_URL = "https://your-core-server.example.com"
+  NODE_VERSION = "22"
 
 # SPA fallback — serve the prerendered shell for any unmatched (client-routed) path.
 [[redirects]]
