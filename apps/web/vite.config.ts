@@ -15,6 +15,9 @@ export default defineConfig({
     tanstackStart({
       // Use our custom server entry (SSR error wrapper) instead of the default.
       server: { entry: "./src/server.ts" },
+      // SPA mode: prerender a static shell (index.html) so the app can be hosted on
+      // any static host (Netlify) and deep links resolve via the client router.
+      spa: { enabled: true },
     }),
     viteReact(),
   ],
