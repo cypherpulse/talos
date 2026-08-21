@@ -20,9 +20,12 @@ CREATE TABLE IF NOT EXISTS notes (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- Per-user scoping: the wallet that shielded/owns the note (added post-v1).
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS owner text;
 CREATE UNIQUE INDEX IF NOT EXISTS notes_commitment_idx ON notes(commitment);
 CREATE INDEX IF NOT EXISTS notes_nullifier_idx ON notes(nullifier);
 CREATE INDEX IF NOT EXISTS notes_state_idx ON notes(state);
+CREATE INDEX IF NOT EXISTS notes_owner_idx ON notes(owner);
 
 CREATE TABLE IF NOT EXISTS operations (
   id text PRIMARY KEY,
