@@ -46,4 +46,4 @@ foreach ($file in $allFiles) {
 }
 
 # Push all commits
-git push --set-upstream origin  master
+git push --set-upstream origin  main
