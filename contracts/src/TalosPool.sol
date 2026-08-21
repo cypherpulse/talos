@@ -7,6 +7,7 @@ pragma solidity 0.8.30;
 
 import {ITalosPool} from "./interfaces/ITalosPool.sol";
 import {ITalosVerifier} from "./interfaces/ITalosVerifier.sol";
+import {ITalosAssetRegistry} from "./interfaces/ITalosAssetRegistry.sol";
 import {IHasher} from "./interfaces/IHasher.sol";
 import {IERC20} from "./interfaces/IERC20.sol";
 import {TalosTypes} from "./TalosTypes.sol";
@@ -74,11 +75,15 @@ contract TalosPool is ITalosPool {
     uint256 private constant _NOT_ENTERED = 1;
     uint256 private constant _ENTERED = 2;
 
-    // --- Immutable configuration (set once, at deployment) ---
+    // --- Linked contracts (set once, at deployment) ---
 
-    /// @notice The single supported ERC-20 test asset. Fixed at deployment so user
-    ///         funds can never be stranded by an asset switch.
-    IERC20 public immutable asset;
+    /// @notice The asset registry resolving `assetId` → backing token configuration.
+    /// @dev All registered assets share ONE commitment tree — the asset is bound
+    ///      in-circuit (the commitment includes assetId and spends enforce asset
+    ///      consistency), and the registry guarantees a unique token ↔ assetId identity,
+    ///      so mixing assets in one pool cannot cause asset confusion. See
+    ///      {TalosAssetRegistry}.
+    ITalosAssetRegistry public immutable registry;
 
     /// @notice The injected 2-arity hasher used to build the Merkle tree
     ///         (circomlib Poseidon(2) from Phase 3 onward).
@@ -155,17 +160,16 @@ contract TalosPool is ITalosPool {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @param asset_ The single supported ERC-20 test asset.
+     * @param registry_ The asset registry resolving assetId → backing token.
      * @param hasher_ The 2-arity hasher for the Merkle tree (Poseidon in Phase 3).
      * @param owner_ The initial administrator.
      */
-    constructor(IERC20 asset_, IHasher hasher_, address owner_) {
-        if (address(asset_) == address(0) || address(hasher_) == address(0) || owner_ == address(0))
-        {
+    constructor(ITalosAssetRegistry registry_, IHasher hasher_, address owner_) {
+        if (address(registry_) == address(0) || address(hasher_) == address(0) || owner_ == address(0)) {
             revert Talos__InvalidParameters();
         }
 
-        asset = asset_;
+        registry = registry_;
         hasher = hasher_;
         owner = owner_;
         emit OwnershipTransferred(address(0), owner_);
@@ -180,17 +184,21 @@ contract TalosPool is ITalosPool {
     //////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc ITalosPool
-    /// @dev Public → 1 note. No proof in Phase 2; the Phase 3 deposit circuit binds
-    ///      `commitment` to `[assetId, amount]`. Follows Checks-Effects-Interactions:
-    ///      the commitment is recorded before the token pull, and the whole call is
-    ///      atomic, so state only persists if the transfer succeeds.
+    /// @dev Public → 1 note. `payable` so the native asset (OKB) can be shielded by
+    ///      sending value; for an ERC-20 asset no value may be sent and the tokens are
+    ///      pulled via transferFrom. The backing token is resolved from the registry.
+    ///      No proof in Phase 2; the Phase 3 deposit circuit binds `commitment` to
+    ///      `[assetId, amount]`. Checks-Effects-Interactions: the commitment is recorded
+    ///      before the transfer, and the whole call is atomic.
     function deposit(uint256 assetId, uint256 amount, uint256 commitment)
         external
+        payable
         whenNotPaused
         nonReentrant
     {
         // --- Checks ---
-        if (assetId != TalosTypes.ASSET_ID) revert Talos__InvalidAsset();
+        (address token,, bool isNative, bool registered,) = registry.assets(assetId);
+        if (!registered) revert Talos__InvalidAsset();
         if (!amount.isValidValue()) revert Talos__InvalidAmount();
         _validateNewCommitment(commitment);
 
@@ -199,7 +207,14 @@ contract TalosPool is ITalosPool {
         emit Deposit(commitment, index, assetId, amount, newRoot);
 
         // --- Interactions ---
-        _safeTransferFrom(asset, msg.sender, address(this), amount);
+        if (isNative) {
+            // Native OKB is received as msg.value; it must exactly match the amount.
+            if (msg.value != amount) revert Talos__InvalidAmount();
+        } else {
+            // ERC-20 deposits must not carry native value.
+            if (msg.value != 0) revert Talos__InvalidAmount();
+            _safeTransferFrom(IERC20(token), msg.sender, address(this), amount);
+        }
     }
 
     /// @inheritdoc ITalosPool
@@ -290,9 +305,10 @@ contract TalosPool is ITalosPool {
         uint256 assetId
     ) external whenNotPaused nonReentrant {
         // --- Checks ---
+        (address token,, bool isNative, bool registered,) = registry.assets(assetId);
         if (!isKnownRoot(root)) revert Talos__InvalidRoot();
         if (recipient == address(0)) revert Talos__InvalidRecipient();
-        if (assetId != TalosTypes.ASSET_ID) revert Talos__InvalidAsset();
+        if (!registered) revert Talos__InvalidAsset();
         if (!amount.isValidValue()) revert Talos__InvalidAmount();
         _requireUnspentNullifier(nullifier);
 
@@ -308,7 +324,12 @@ contract TalosPool is ITalosPool {
         _spendNullifier(nullifier);
 
         // --- Interactions ---
-        _safeTransfer(asset, recipient, amount);
+        if (isNative) {
+            (bool ok,) = payable(recipient).call{value: amount}("");
+            if (!ok) revert Talos__TransferFailed();
+        } else {
+            _safeTransfer(IERC20(token), recipient, amount);
+        }
 
         emit Withdrawal(nullifier, recipient, assetId, amount);
     }
