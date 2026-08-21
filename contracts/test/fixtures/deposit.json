@@ -1,0 +1,31 @@
+{
+  "op": "deposit",
+  "assetId": "0x1",
+  "amount": "0x64",
+  "commitment": "0x282d91ce9d868d9dbfbaf40faa5920fd127aecb472228edfd494dc70ccba55de",
+  "proof": {
+    "a": [
+      "0x11fd6b5ff967c83f6b53539d4ae9816f74bc7f6745edd5134f7455ecfa1f5a08",
+      "0x1e98972c35d15878b1899de109f8146313b9d66fc88b912a59aa0e93d19e8452"
+    ],
+    "b": [
+      [
+        "0x177ff8ddc4e1d3add84590abe0b5bf7feb749540ebc187376a9aa89928e26e92",
+        "0x0fc78fc09e8a3afc5b1119632db71537fab60c92d36e1eb202d1849f70e716ad"
+      ],
+      [
+        "0x21743eaf8774cf3370adda52d8e00c5d8ed24b04939e840ef11a9ace8d562dca",
+        "0x1cd721eb5e8c45b2b5c1c2c6866772766e4a69b923c16f3c8645986dfdee5980"
+      ]
+    ],
+    "c": [
+      "0x0a363ceebf7aa42002a1b4605de99126d8a640ce70e56f791cef3d2e6091194c",
+      "0x2290f4daf77ad119909aceff6e6147e7648468a884f88895c62c19ab70995dec"
+    ]
+  },
+  "publicSignals": [
+    "0x1",
+    "0x64",
+    "0x282d91ce9d868d9dbfbaf40faa5920fd127aecb472228edfd494dc70ccba55de"
+  ]
+}
