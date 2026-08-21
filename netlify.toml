@@ -16,4 +16,5 @@
   from = "/*"
   to = "/_shell.html"
   status = 200
-  force = true
+# Do not force this redirect for static asset requests. Netlify should serve files
+# from /assets/* normally and only rewrite unmatched browser routes to the shell.
