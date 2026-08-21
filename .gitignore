@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+# NOTE: no bare `build/` rule — it would swallow the tracked `circuits/build/`
+# scaffold. Circuit build artifacts are ignored by extension below instead.
+dist/
+out/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Environment / secrets — NEVER commit real values
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/forge-std/
+
+# ZK generated artifacts — NEVER commit proving keys, trusted-setup, witnesses,
+# or large compiled circuit outputs. Regenerate with `pnpm zk:build && pnpm zk:setup`.
+circuits/build/**/*.zkey
+circuits/build/**/*.ptau
+circuits/build/ptau/
+circuits/build/**/*.r1cs
+circuits/build/**/*.wasm
+circuits/build/**/*.sym
+circuits/build/**/*.wtns
+circuits/build/**/*_js/
+circuits/build/**/witness.wtns
+circuits/build/**/verification_key.json
+circuits/build/**/proof.json
+circuits/build/**/public.json
+# NEVER commit witness input files — they contain private note secrets.
+**/*.witness.json
+**/inputs/*.json
+!circuits/build/**/.gitkeep
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
