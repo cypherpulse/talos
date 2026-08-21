@@ -155,7 +155,7 @@ function Header() {
           </a>
           <Link
             to="/app"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-strong hover:shadow-[0_0_0_1px_rgba(47,226,138,0.3),0_10px_30px_-12px_rgba(47,226,138,0.6)]"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-strong hover:shadow-[0_0_0_1px_rgba(164,249,29,0.3),0_10px_30px_-12px_rgba(164,249,29,0.6)]"
           >
             Launch <ArrowRight className="size-3.5" />
           </Link>
@@ -169,13 +169,32 @@ function Header() {
 /* Hero                                                               */
 /* ------------------------------------------------------------------ */
 
+function PlusMark({ className }: { className?: string }) {
+  return (
+    <span aria-hidden className={`pointer-events-none absolute hidden text-primary/40 lg:block ${className ?? ""}`}>
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path d="M6 0v12M0 6h12" stroke="currentColor" strokeWidth="1" />
+      </svg>
+    </span>
+  );
+}
+
 function Hero() {
   return (
     <section className="relative overflow-hidden border-b border-border">
-      {/* atmospherics */}
+      {/* atmospherics + decorative shapes */}
       <div aria-hidden className="pointer-events-none absolute inset-0 grid-noise mask-fade-y" />
       <div aria-hidden className="aurora aurora-a left-[6%] top-[-14%] h-[520px] w-[520px]" />
       <div aria-hidden className="aurora aurora-b right-[2%] top-[-6%] h-[440px] w-[440px]" />
+      <div aria-hidden className="pointer-events-none absolute right-[-7rem] top-[-8rem] hidden size-[38rem] lg:block">
+        <div className="ring-deco absolute inset-0 opacity-40" />
+        <div className="ring-deco absolute inset-[13%] opacity-30" />
+        <div className="ring-deco absolute inset-[27%] opacity-20" />
+      </div>
+      <div aria-hidden className="dot-grid-fade pointer-events-none absolute right-[10%] top-[14%] hidden size-36 lg:block" />
+      <PlusMark className="left-[4%] top-[24%]" />
+      <PlusMark className="left-[47%] top-[12%]" />
+      <PlusMark className="left-[40%] bottom-[16%]" />
 
       <div className="relative mx-auto grid max-w-6xl items-center gap-16 px-4 py-24 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:py-28">
         <motion.div
@@ -196,7 +215,7 @@ function Hero() {
           <h1 className="mt-6 text-5xl font-semibold leading-[1.02] tracking-tight text-foreground sm:text-6xl lg:text-[4.25rem]">
             Private assets.
             <br />
-            <span className="text-gradient">Intelligent execution.</span>
+            <span className="text-primary">Intelligent execution.</span>
           </h1>
 
           <p className="mt-6 max-w-xl text-pretty text-lg leading-relaxed text-muted-foreground">
@@ -238,7 +257,8 @@ function Hero() {
           className="relative"
         >
           <div aria-hidden className="absolute -inset-6 rounded-[2rem] bg-primary/10 blur-3xl" />
-          <div className="float-slow">
+          <div aria-hidden className="conic-ring pointer-events-none absolute -right-24 -top-24 hidden size-64 opacity-40 lg:block" />
+          <div className="brackets relative float-slow">
             <HeroShowcase />
           </div>
         </motion.div>
