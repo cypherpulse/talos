@@ -66,6 +66,7 @@ export interface Note {
   nullifier: string; // Poseidon(nullifierSecret, secret)
   state: NoteState;
   leafIndex: number | null; // set once observed on-chain
+  owner: string | null; // lowercased wallet address that owns this note (per-user scoping)
   createdAt: string;
   updatedAt: string;
 }
