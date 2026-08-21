@@ -41,6 +41,7 @@ class PgNotes implements NotesRepository {
       nullifier: n.nullifier,
       state: n.state,
       leafIndex: n.leafIndex,
+      owner: n.owner ?? null,
       secretBlob: this.enc.encryptJson(secrets),
       updatedAt: new Date(),
     };
@@ -55,6 +56,7 @@ class PgNotes implements NotesRepository {
       nullifier: r.nullifier,
       state: r.state as NoteState,
       leafIndex: r.leafIndex,
+      owner: r.owner ?? null,
       ...secrets,
       createdAt: iso(r.createdAt),
       updatedAt: iso(r.updatedAt),
@@ -80,8 +82,14 @@ class PgNotes implements NotesRepository {
     const rows = await this.db.select().from(s.notes).where(eq(s.notes.state, state));
     return rows.map((r) => this.fromRow(r));
   }
-  async list(limit: number) {
-    const rows = await this.db.select().from(s.notes).orderBy(desc(s.notes.createdAt)).limit(limit);
+  async list(limit: number, owner?: string) {
+    const base = this.db.select().from(s.notes);
+    const rows = await (owner
+      ? base.where(eq(s.notes.owner, owner.toLowerCase()))
+      : base
+    )
+      .orderBy(desc(s.notes.createdAt))
+      .limit(limit);
     return rows.map((r) => this.fromRow(r));
   }
   async update(n: Note) {
