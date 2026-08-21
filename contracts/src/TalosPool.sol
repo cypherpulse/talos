@@ -40,7 +40,7 @@ import {
  *                                    spent-nullifier / inserted-commitment sets;
  *           2. cryptography ....... a pluggable Merkle {IHasher} and per-operation
  *                                    {ITalosVerifier} proof-verification boundary;
- *           3. token accounting ... the immutable single ERC-20 test `asset`;
+ *           3. token accounting ... the linked {TalosAssetRegistry} (multi-asset + native OKB);
  *           4. administration ..... `owner`, `paused`, and verifier configuration.
  *
  *         Supported operations: Deposit (public → 1 note), Transfer (1 → 2),
@@ -165,7 +165,10 @@ contract TalosPool is ITalosPool {
      * @param owner_ The initial administrator.
      */
     constructor(ITalosAssetRegistry registry_, IHasher hasher_, address owner_) {
-        if (address(registry_) == address(0) || address(hasher_) == address(0) || owner_ == address(0)) {
+        if (
+            address(registry_) == address(0) || address(hasher_) == address(0)
+                || owner_ == address(0)
+        ) {
             revert Talos__InvalidParameters();
         }
 
