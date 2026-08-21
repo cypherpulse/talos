@@ -1,0 +1,36 @@
+# Foundry configuration — Talos contracts (Phase 1 scaffold)
+# https://book.getfoundry.sh/reference/config/
+
+[profile.default]
+src = "src"
+out = "out"
+test = "test"
+script = "script"
+libs = ["lib"]
+
+# Frozen compiler decision for the MVP.
+solc = "0.8.30"
+evm_version = "cancun"
+
+# Optimizer enabled per Phase 1 requirements.
+optimizer = true
+optimizer_runs = 200
+
+# Treat warnings seriously as the protocol is implemented.
+# (Kept non-fatal in Phase 1 so placeholder scaffolding builds cleanly.)
+fs_permissions = [
+    { access = "read", path = "./" },
+    { access = "read", path = "../circuits/test-vectors" },
+]
+
+[fmt]
+line_length = 100
+tab_width = 4
+bracket_spacing = false
+int_types = "long"
+# Generated Groth16 verifiers are machine-authored — never reformat/edit them.
+ignore = ["src/verifiers/*.sol"]
+
+# X Layer testnet RPC — read from the environment. Never hardcode secrets.
+[rpc_endpoints]
+xlayer_testnet = "${XLAYER_TESTNET_RPC_URL}"
