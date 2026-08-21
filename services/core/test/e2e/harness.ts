@@ -7,6 +7,7 @@ import {
   createWalletClient,
   defineChain,
   http,
+  stringToHex,
   type Abi,
   type Address,
   type Hex,
@@ -102,8 +103,13 @@ export async function deployAll(port: number, proc: ChildProcess): Promise<Deplo
   const mock = artifact("MockERC20.sol", "MockERC20");
   const asset = await deploy(mock.abi, mock.bytecode);
 
+  // Standalone asset registry: register the test asset at ASSET_ID = 1.
+  const regArt = artifact("TalosAssetRegistry.sol", "TalosAssetRegistry");
+  const registry = await deploy(regArt.abi, regArt.bytecode, [account.address]);
+  await write(registry, regArt.abi, "registerAsset", [1n, asset, false, stringToHex("tUSDC", { size: 32 }), 6]);
+
   const poolArt = artifact("TalosPool.sol", "TalosPool");
-  const pool = await deploy(poolArt.abi, poolArt.bytecode, [asset, hasher, account.address]);
+  const pool = await deploy(poolArt.abi, poolArt.bytecode, [registry, hasher, account.address]);
 
   const adapter = artifact("TalosVerifier.sol", "TalosVerifier");
   const verifiers: Array<[string, string, number, number]> = [
