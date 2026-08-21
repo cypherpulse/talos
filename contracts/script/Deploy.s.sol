@@ -4,10 +4,11 @@ pragma solidity 0.8.30;
 import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 import {TalosPool} from "../src/TalosPool.sol";
+import {TalosAssetRegistry} from "../src/TalosAssetRegistry.sol";
 import {TalosVerifier} from "../src/TalosVerifier.sol";
 import {ITalosVerifier} from "../src/interfaces/ITalosVerifier.sol";
+import {ITalosAssetRegistry} from "../src/interfaces/ITalosAssetRegistry.sol";
 import {IHasher} from "../src/interfaces/IHasher.sol";
-import {IERC20} from "../src/interfaces/IERC20.sol";
 import {TalosTypes} from "../src/TalosTypes.sol";
 import {TransferVerifier} from "../src/verifiers/TransferVerifier.sol";
 import {SplitVerifier} from "../src/verifiers/SplitVerifier.sol";
@@ -16,33 +17,39 @@ import {WithdrawVerifier} from "../src/verifiers/WithdrawVerifier.sol";
 
 /// @title Deploy
 /// @author Talos
-/// @notice Phase 3 deployment: wires TalosPool to the real Groth16 verifiers.
-/// @dev Deploys the pool against an existing ERC-20 test asset and an existing
-///      Poseidon(2) hasher, then installs the generated Groth16 verifier for every
-///      private operation behind the {TalosVerifier} adapter (which reshapes the
-///      pool's dynamic public signals into each circuit's fixed-size input array).
+/// @notice Deploys the standalone {TalosAssetRegistry}, registers the X Layer testnet
+///         assets (USDC=1, USDT=2, USDG=3, native OKB=4), deploys {TalosPool} linked to
+///         the registry, and installs the generated Groth16 verifiers behind the
+///         {TalosVerifier} adapter for each private operation.
+/// @dev The Poseidon(2) hasher is deployed separately from the circomlibjs bytecode
+///      (see packages/zk) and supplied via POSEIDON_HASHER_ADDRESS. Token addresses are
+///      optional env vars; unset stablecoins are skipped.
 ///
-///      The Poseidon(2) hasher is deployed separately from the circomlibjs bytecode
-///      (see packages/zk) and its address supplied via POSEIDON_HASHER_ADDRESS — it
-///      cannot be expressed as Solidity source.
-///
-///      Required environment:
-///        DEPLOYER_PRIVATE_KEY     - deployer key (testnet only)
-///        TEST_USDC_ADDRESS        - the single supported ERC-20 test asset
-///        POSEIDON_HASHER_ADDRESS  - the deployed circomlib Poseidon(2) contract
+///      Required env:  DEPLOYER_PRIVATE_KEY, POSEIDON_HASHER_ADDRESS
+///      Optional env:  TEST_USDC_ADDRESS, TEST_USDT_ADDRESS, TEST_USDG_ADDRESS
 contract Deploy is Script {
-    function run() external returns (TalosPool pool) {
+    function run() external returns (TalosPool pool, TalosAssetRegistry registry) {
         uint256 deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        address asset = vm.envAddress("TEST_USDC_ADDRESS");
         address hasher = vm.envAddress("POSEIDON_HASHER_ADDRESS");
         address owner = vm.addr(deployerKey);
 
+        address usdc = vm.envOr("TEST_USDC_ADDRESS", address(0));
+        address usdt = vm.envOr("TEST_USDT_ADDRESS", address(0));
+        address usdg = vm.envOr("TEST_USDG_ADDRESS", address(0));
+
         vm.startBroadcast(deployerKey);
 
-        pool = new TalosPool(IERC20(asset), IHasher(hasher), owner);
+        // Registry with a unique identity per asset (USDC=ASSET_ID=1).
+        registry = new TalosAssetRegistry(owner);
+        if (usdc != address(0)) registry.registerAsset(1, usdc, false, "USDC", 6);
+        if (usdt != address(0)) registry.registerAsset(2, usdt, false, "USDT", 6);
+        if (usdg != address(0)) registry.registerAsset(3, usdg, false, "USDG", 6);
+        // Native OKB (X Layer gas token) — no ERC-20 backing.
+        registry.registerAsset(4, address(0), true, "OKB", 18);
 
-        // Deploy the generated verifiers and install each behind the adapter with
-        // its frozen public-signal count.
+        pool = new TalosPool(ITalosAssetRegistry(address(registry)), IHasher(hasher), owner);
+
+        // Install each generated verifier behind the adapter with its frozen signal count.
         pool.setVerifier(
             TalosTypes.Operation.Transfer,
             ITalosVerifier(address(new TalosVerifier(address(new TransferVerifier()), 4)))
@@ -62,8 +69,8 @@ contract Deploy is Script {
 
         vm.stopBroadcast();
 
+        console2.log("TalosAssetRegistry:", address(registry));
         console2.log("TalosPool:", address(pool));
-        console2.log("asset:", asset);
         console2.log("hasher:", hasher);
     }
 }
