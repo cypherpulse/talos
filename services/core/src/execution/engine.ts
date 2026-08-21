@@ -1,15 +1,16 @@
 import { randomUUID } from "node:crypto";
-import type { Address } from "viem";
+import type { Address, Hash } from "viem";
 import type { Repositories } from "../database/repositories.js";
 import type { NoteManager } from "../notes/manager.js";
 import type { ProofService } from "../proofs/service.js";
 import type { ContractClient } from "../contracts/index.js";
+import type { ChainClient } from "../blockchain/client.js";
 import type { TransactionManager } from "../transactions/manager.js";
 import type { MerkleSynchronizer } from "../merkle/synchronizer.js";
 import type { LockService } from "./locks.js";
 import type { Logger } from "../observability/logger.js";
 import type { OperationRecord, OperationStatus, OperationType } from "../domain/types.js";
-import { assertTransition } from "../domain/state-machine.js";
+import { assertTransition, isTerminal } from "../domain/state-machine.js";
 import { ASSET_ID, MAX_VALUE } from "../crypto/poseidon.js";
 import {
   depositWitness,
@@ -33,6 +34,7 @@ export interface EngineDeps {
   notes: NoteManager;
   proofs: ProofService;
   contract: ContractClient;
+  chain: ChainClient;
   txManager: TransactionManager;
   merkle: MerkleSynchronizer;
   locks: LockService;
@@ -219,6 +221,66 @@ export class ExecutionEngine {
     });
   }
 
+  // ---- DEPOSIT (non-custodial: user's browser wallet signs + funds the on-chain tx) ----
+
+  /**
+   * Phase 1 of a user-signed deposit: create the private note and its commitment, run
+   * the off-chain binding proof, and stop at READY_TO_SUBMIT. The pool deposit is
+   * proofless on-chain, so the returned commitment is all the browser needs to call
+   * `pool.deposit(assetId, amount, commitment)` itself (approving the ERC-20 or sending
+   * native OKB as value). The server never holds the user's funds.
+   */
+  async prepareDeposit(op0: OperationRecord): Promise<{ op: OperationRecord; commitment: string }> {
+    let op = await this.setStatus(op0, "VALIDATING");
+    const assetId = BigInt(String(op.request.assetId ?? ASSET_ID));
+    const amount = BigInt(String(op.request.amount));
+    if (assetId <= 0n) throw UnsupportedAsset(`asset ${assetId} not supported`);
+    if (amount <= 0n || amount > MAX_VALUE) throw InvalidRequest("amount out of range");
+
+    const owner = op.request.owner ? String(op.request.owner) : undefined;
+    const note = await this.d.notes.createNote({ assetId, value: amount, owner });
+    op = await this.d.repos.operations.update({ ...op, noteIds: [note.id] });
+
+    op = await this.setStatus(op, "PROVING");
+    const proofPkg = await this.d.proofs.prove("DEPOSIT", depositWitness(note));
+    const proofId = `proof_${randomUUID()}`;
+    await this.d.repos.proofs.create(proofId, proofPkg);
+    op = await this.setStatus(op, "PROOF_READY", { proofId });
+    op = await this.setStatus(op, "READY_TO_SUBMIT");
+    return { op, commitment: note.commitment };
+  }
+
+  /**
+   * Phase 2 of a user-signed deposit: the browser has broadcast the deposit tx and
+   * hands back its hash. Wait for the receipt, then reconcile the note (sync the tree,
+   * attach the leaf index, mark it AVAILABLE) and finalize.
+   */
+  async confirmDeposit(id: string, txHash: string): Promise<OperationRecord> {
+    let op = await this.getOperation(id);
+    if (op.type !== "DEPOSIT") throw InvalidRequest("operation is not a deposit");
+    if (isTerminal(op.status)) return op; // idempotent — already reconciled
+    if (op.status !== "READY_TO_SUBMIT") throw InvalidRequest(`deposit not awaiting a tx (status ${op.status})`);
+    try {
+      op = await this.setStatus(op, "SUBMITTING");
+      op = await this.setStatus(op, "SUBMITTED", { txHash });
+      op = await this.setStatus(op, "CONFIRMING");
+      const receipt = await this.d.chain.waitForReceipt(txHash as Hash);
+      if (receipt.status !== "success") throw InvalidRequest("deposit transaction reverted on-chain");
+      op = await this.setStatus(op, "CONFIRMED");
+
+      const noteId = op.noteIds[0]!;
+      const note = await this.d.notes.get(noteId);
+      const leafIndex = await this.resolveLeafIndex(note.commitment);
+      await this.d.notes.markAvailable(noteId, leafIndex);
+      return this.setStatus(op, "FINALIZED", {
+        result: { noteId, commitment: note.commitment, leafIndex, txHash },
+      });
+    } catch (e) {
+      op = await this.getOperation(id);
+      return this.fail(op, e);
+    }
+  }
+
   // ---- SPLIT ----
 
   private async runSplit(op0: OperationRecord): Promise<OperationRecord> {
@@ -239,8 +301,9 @@ export class ExecutionEngine {
 
       op = await this.setStatus(op, "PROVING");
       const sk = BigInt(locked.nullifierSecret);
-      const out1 = await this.d.notes.createNote({ assetId: BigInt(input.assetId), value: a1, sk });
-      const out2 = await this.d.notes.createNote({ assetId: BigInt(input.assetId), value: a2, sk });
+      const owner = input.owner ?? undefined; // child notes inherit the owner
+      const out1 = await this.d.notes.createNote({ assetId: BigInt(input.assetId), value: a1, sk, owner });
+      const out2 = await this.d.notes.createNote({ assetId: BigInt(input.assetId), value: a2, sk, owner });
       const proofPkg = await this.d.proofs.prove("SPLIT", splitWitness(locked, path, out1, out2));
       this.assertPublicSignals(proofPkg.publicSignals, [path.root, locked.nullifier, out1.commitment, out2.commitment]);
       const proofId = `proof_${randomUUID()}`;
@@ -288,7 +351,7 @@ export class ExecutionEngine {
 
         op = await this.setStatus(op, "PROVING");
         const value = BigInt(l1.value) + BigInt(l2.value);
-        const out = await this.d.notes.createNote({ assetId: BigInt(n1.assetId), value, sk: BigInt(l1.nullifierSecret) });
+        const out = await this.d.notes.createNote({ assetId: BigInt(n1.assetId), value, sk: BigInt(l1.nullifierSecret), owner: n1.owner ?? undefined });
         const proofPkg = await this.d.proofs.prove("MERGE", mergeWitness(l1, p1, l2, p2, out));
         this.assertPublicSignals(proofPkg.publicSignals, [p1.root, l1.nullifier, l2.nullifier, out.commitment]);
         const proofId = `proof_${randomUUID()}`;
@@ -333,7 +396,7 @@ export class ExecutionEngine {
       // out1 -> recipient key (external, server cannot spend); out2 -> self.
       const recipientPub = BigInt(String(op.request.recipientOwnerPubKey));
       const out1 = await this.d.notes.createExternalNote(BigInt(input.assetId), a1, recipientPub);
-      const out2 = await this.d.notes.createNote({ assetId: BigInt(input.assetId), value: a2 });
+      const out2 = await this.d.notes.createNote({ assetId: BigInt(input.assetId), value: a2, owner: input.owner ?? undefined });
       const proofPkg = await this.d.proofs.prove("TRANSFER", transferWitness(locked, path, out1, out2));
       this.assertPublicSignals(proofPkg.publicSignals, [path.root, locked.nullifier, out1.commitment, out2.commitment]);
       const proofId = `proof_${randomUUID()}`;
