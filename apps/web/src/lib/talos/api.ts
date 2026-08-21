@@ -1,6 +1,8 @@
 import type {
   AgentMessageResponse,
+  AssetsResponse,
   ChainStatus,
+  DepositPrepareResponse,
   GuardDecisionRecord,
   GuardIdentity,
   GuardResult,
@@ -109,13 +111,20 @@ export const talosApi = {
   status: () => request<ChainStatus>("/api/v1/status"),
   merkleRoot: () => request<{ root: string }>("/api/v1/merkle/root"),
 
-  notes: () => request<{ notes: NotePublic[] }>("/api/v1/notes"),
+  notes: (owner?: string) =>
+    request<{ notes: NotePublic[] }>(`/api/v1/notes${owner ? `?owner=${owner}` : ""}`),
   note: (id: string) => request<NotePublic>(`/api/v1/notes/${id}`),
   operation: (id: string) => request<OperationView>(`/api/v1/operations/${id}`),
   transaction: (id: string) => request<TransactionRecord>(`/api/v1/transactions/${id}`),
 
+  assets: () => request<AssetsResponse>("/api/v1/assets"),
+
   deposit: (body: { amount: string; assetId?: number }, key?: string) =>
     request<OperationAck>("/api/v1/deposits", { method: "POST", body, idempotencyKey: key }),
+  depositPrepare: (body: { assetId: number; amount: string; owner?: string }, key?: string) =>
+    request<DepositPrepareResponse>("/api/v1/deposits/prepare", { method: "POST", body, idempotencyKey: key }),
+  depositConfirm: (operationId: string, txHash: string) =>
+    request<OperationView>(`/api/v1/deposits/${operationId}/confirm`, { method: "POST", body: { txHash } }),
   split: (body: { noteId: string; amount1: string; amount2: string }, key?: string) =>
     request<OperationAck>("/api/v1/splits", { method: "POST", body, idempotencyKey: key }),
   merge: (body: { noteId1: string; noteId2: string }, key?: string) =>
