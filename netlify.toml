@@ -16,3 +16,4 @@
   from = "/*"
   to = "/_shell.html"
   status = 200
+  force = true
