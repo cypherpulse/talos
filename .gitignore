@@ -18,6 +18,7 @@ out/
 *.key
 *.pem
 secrets/
+*.ps1
 
 # Foundry
 contracts/out/
