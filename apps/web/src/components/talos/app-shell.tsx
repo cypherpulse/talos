@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   Menu,
   Send,
-  ShieldCheck,
   Split,
   Wallet,
   X,
@@ -46,9 +45,7 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
 function Brand() {
   return (
     <Link to="/" className="flex items-center gap-2.5">
-      <span className="grid size-9 place-items-center rounded-xl bg-primary/15 ring-1 ring-primary/30">
-        <ShieldCheck className="size-4.5 text-primary" />
-      </span>
+      <img src="/talos.png" alt="Talos" className="size-9 rounded-xl object-contain" />
       <span className="flex flex-col leading-none">
         <span className="mono text-sm font-semibold tracking-[0.24em] text-foreground">TALOS</span>
         <span className="mt-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
