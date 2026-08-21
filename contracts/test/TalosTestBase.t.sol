@@ -51,7 +51,8 @@ abstract contract TalosTestBase is Test {
         verifier = new MockVerifier(true); // default: accept proofs
         registry = new TalosAssetRegistry(owner);
         registry.registerAsset(TalosTypes.ASSET_ID, address(token), false, "tUSDC", 6);
-        pool = new TalosPool(ITalosAssetRegistry(address(registry)), IHasher(address(hasher)), owner);
+        pool =
+            new TalosPool(ITalosAssetRegistry(address(registry)), IHasher(address(hasher)), owner);
 
         pool.setVerifier(TalosTypes.Operation.Transfer, ITalosVerifier(address(verifier)));
         pool.setVerifier(TalosTypes.Operation.Split, ITalosVerifier(address(verifier)));
