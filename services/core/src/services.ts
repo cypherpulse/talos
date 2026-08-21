@@ -65,7 +65,7 @@ export function buildServices(opts: BuildOptions): Services {
     opts.fromBlock ?? 0n,
   );
 
-  const engine = new ExecutionEngine({ repos, notes, proofs, contract, txManager, merkle, locks, logger });
+  const engine = new ExecutionEngine({ repos, notes, proofs, contract, chain, txManager, merkle, locks, logger });
   const dispatcher = (opts.dispatcherFactory ?? ((e, l) => new InlineDispatcher(e, l)))(engine, logger);
 
   return { config, logger, repos, chain, contract, proofs, notes, encryption, merkle, txManager, engine, dispatcher, locks };
