@@ -11,7 +11,8 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector-enabled Postgres (agent memory uses the `vector` extension). Drop-in for postgres:16.
+    image: pgvector/pgvector:pg16
     container_name: talos-postgres
     restart: unless-stopped
     environment:
