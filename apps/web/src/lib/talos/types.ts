@@ -157,6 +157,131 @@ export interface AgentMessageResponse {
   decisions: GuardDecisionRecord[];
 }
 
+// ---- Phase 6: multi-agent trading ----
+
+export type AgentRole = "RESEARCH" | "TRADER" | "PORTFOLIO";
+
+export interface Agent {
+  id: string;
+  owner: string;
+  role: AgentRole;
+  name: string;
+  walletAddress: string;
+  talosPublicKey: string;
+  status: "ACTIVE" | "DISABLED";
+  createdAt: string;
+}
+
+export interface ReceiveIdentity {
+  agentId: string;
+  talosPublicKey: string;
+  walletAddress: string;
+}
+
+export type MemoryType = "WORKING" | "SEMANTIC" | "EPISODIC";
+
+export interface AgentMemory {
+  id: string;
+  owner: string;
+  agentId: string | null;
+  memoryType: MemoryType;
+  content: string;
+  asset: string | null;
+  importance: number;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export type TradeRecommendation = "BUY" | "SELL" | "HOLD";
+
+export interface ResearchResult {
+  asset: string;
+  recommendation: TradeRecommendation;
+  confidence: number;
+  rationale: string;
+  suggestedAmount?: string;
+  maxSlippageBps: number;
+  priceUsd?: number;
+  source: string;
+}
+
+export interface PortfolioPosition {
+  symbol: string;
+  assetId: number;
+  amount: string;
+  valueUsd: number;
+  weight: number;
+}
+
+export interface PortfolioSnapshot {
+  totalValueUsd: number;
+  positions: PortfolioPosition[];
+  takenAt: string;
+}
+
+export type TradeDecision = "APPROVED" | "REJECTED" | "APPROVAL_REQUIRED";
+
+export interface TradeResult {
+  executionId: string;
+  decision: TradeDecision;
+  reason: string;
+  status: string;
+  toAmount?: string;
+  valueUsd?: number;
+  txHash?: string;
+}
+
+export interface TradeExecution {
+  id: string;
+  intentId: string;
+  agentId: string;
+  owner: string;
+  provider: string;
+  fromAmount: string;
+  toAmount: string;
+  valueUsd: string;
+  status: string;
+  txHash: string | null;
+  failReason: string | null;
+  quote: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Quote {
+  fromToken: { symbol: string; address: string; decimals: number };
+  toToken: { symbol: string; address: string; decimals: number };
+  fromAmount: string;
+  toAmount: string;
+  priceImpactBps?: number;
+  routerAddress?: string;
+  estimatedGas?: string;
+}
+
+export interface TradeIntent {
+  type: "TRADE";
+  assetIn: string;
+  assetOut: string;
+  amount: string;
+  maxSlippageBps: number;
+}
+
+export interface RebalanceAction {
+  assetIn: string;
+  assetOut: string;
+  amount: string;
+  reason: string;
+}
+
+export interface OrchestrationResult {
+  reply: string;
+  research?: ResearchResult;
+  intent?: TradeIntent;
+  trade?: TradeResult;
+  rebalance?: RebalanceAction[];
+  snapshot?: PortfolioSnapshot;
+}
+
 export const TERMINAL_SUCCESS: OperationStatus[] = ["FINALIZED"];
 export const TERMINAL_FAILURE: OperationStatus[] = [
   "FAILED",
