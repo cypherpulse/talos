@@ -9,6 +9,8 @@ import { toNotePublic, type OperationRecord, type OperationType } from "../domai
 import { requestId, rateLimit } from "./middleware.js";
 import { DepositSchema, MergeSchema, SplitSchema, TransferSchema, WithdrawSchema } from "./schemas.js";
 import { loadAssets } from "../domain/assets.js";
+import { deriveOwnerPubKey } from "../crypto/poseidon.js";
+import { randomFieldElement } from "../crypto/random.js";
 import { CoreClient } from "../guard/core-client.js";
 import { TalosGuard } from "../guard/guard.js";
 import { createGuardApp } from "../guard/api.js";
@@ -184,6 +186,15 @@ export function createApp(services: Services): Hono<Env> {
     return c.json(sanitizeOperation(op));
   });
 
+  // Generate a Talos owner keypair for receiving private transfers. The `ownerPublicKey`
+  // is shared with senders; the `spendingKey` is the secret the recipient keeps to later
+  // spend notes sent to that key. (Testnet/dev convenience — treat the spending key as a secret.)
+  app.post("/api/v1/keys/generate", async (c) => {
+    const sk = randomFieldElement();
+    const ownerPublicKey = await deriveOwnerPubKey(sk);
+    return c.json({ spendingKey: sk.toString(), ownerPublicKey: ownerPublicKey.toString() }, 201);
+  });
+
   app.post("/api/v1/deposits", async (c) => submit(c, "DEPOSIT", DepositSchema.parse(await c.req.json())));
   app.post("/api/v1/splits", async (c) => submit(c, "SPLIT", SplitSchema.parse(await c.req.json())));
   app.post("/api/v1/merges", async (c) => submit(c, "MERGE", MergeSchema.parse(await c.req.json())));
@@ -196,16 +207,26 @@ export function createApp(services: Services): Hono<Env> {
   // The Guard is the security boundary between the LLM agent and the Core mutations:
   // every agent action goes NL → Agent → Guard.execute → these same Core endpoints,
   // in-process (CoreClient replays requests against this app; no extra network hop).
-  const core = new CoreClient((path, init) => Promise.resolve(app.request(path, init)));
+  const reqFn = (path: string, init?: RequestInit) => Promise.resolve(app.request(path, init));
   const { identity, policy } = policyFromEnv();
-  const guard = new TalosGuard(core, identity, policy, new InMemoryAuditLog(), logger);
-  const agent = new TalosAgent(createLLMProvider(), { core, guard, logger }, logger);
+  const audit = new InMemoryAuditLog();
+  const llm = createLLMProvider();
 
-  app.route("/", createGuardApp(guard, core));
+  // The /guard/* routes use a default (unscoped) guard for direct calls from the UI.
+  const defaultCore = new CoreClient(reqFn);
+  app.route("/", createGuardApp(new TalosGuard(defaultCore, identity, policy, audit, logger), defaultCore));
 
-  const AgentMessageSchema = z.object({ message: z.string().min(1).max(2000) });
+  // /agent/message scopes everything to the connected wallet, so the agent reads that
+  // wallet's notes/balance (never the whole server's) and acts only for that user.
+  const AgentMessageSchema = z.object({
+    message: z.string().min(1).max(2000),
+    owner: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+  });
   app.post("/agent/message", async (c) => {
-    const { message } = AgentMessageSchema.parse(await c.req.json());
+    const { message, owner } = AgentMessageSchema.parse(await c.req.json());
+    const scopedCore = new CoreClient(reqFn, owner?.toLowerCase());
+    const guard = new TalosGuard(scopedCore, identity, policy, audit, logger);
+    const agent = new TalosAgent(llm, { core: scopedCore, guard, logger, ...(owner ? { owner: owner.toLowerCase() } : {}) }, logger);
     return c.json(await agent.handle(message));
   });
 
