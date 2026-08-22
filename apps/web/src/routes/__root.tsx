@@ -104,11 +104,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
-      <body>
+      {/* suppressHydrationWarning: wallet browser extensions inject nodes into <body>
+          before React hydrates, which would otherwise trip a hydration mismatch. */}
+      <body suppressHydrationWarning>
         {children}
         <Scripts />
       </body>
