@@ -1,5 +1,8 @@
 import type {
+  Agent,
+  AgentMemory,
   AgentMessageResponse,
+  AgentRole,
   AssetsResponse,
   ChainStatus,
   DepositPrepareResponse,
@@ -10,12 +13,20 @@ import type {
   OperationAck,
   OperationType,
   OperationView,
+  OrchestrationResult,
+  PortfolioPosition,
+  PortfolioSnapshot,
+  Quote,
+  ReceiveIdentity,
+  ResearchResult,
+  TradeExecution,
+  TradeResult,
   TransactionRecord,
 } from "./types";
 
 export const API_BASE_URL: string = (
   (import.meta.env["VITE_TALOS_API_BASE_URL"] as string | undefined) ??
-  "https://talos-c4wi.onrender.com"
+  "http://localhost:3000"
 ).replace(/\/+$/, "");
 
 export const EXPLORER_URL: string = (
@@ -152,6 +163,44 @@ export const talosApi = {
 
   agentMessage: (body: { message: string; owner?: string }) =>
     request<AgentMessageResponse>("/agent/message", { method: "POST", body }),
+
+  // ---- Phase 6: multi-agent trading ----
+  agents: (owner: string) => request<{ agents: Agent[] }>(`/api/v1/agents?owner=${owner}`),
+  createAgentWallet: (body: { owner: string; role: AgentRole; name?: string }) =>
+    request<Agent>("/api/v1/agents", { method: "POST", body }),
+  agent: (id: string) => request<Agent>(`/api/v1/agents/${id}`),
+  receiveIdentity: (id: string) => request<ReceiveIdentity>(`/api/v1/agents/${id}/receive-identity`),
+  agentTransfer: (
+    id: string,
+    body: { owner: string; toAgentId?: string; toPublicKey?: string; assetId: number; amount: string },
+  ) => request<{ operationId: string; status: string }>(`/api/v1/agents/${id}/transfer`, { method: "POST", body }),
+
+  portfolio: (owner: string) => request<PortfolioSnapshot>(`/api/v1/portfolio?owner=${owner}`),
+  portfolioHistory: (owner: string) =>
+    request<{ snapshots: Array<{ totalValueUsd: string; positions: PortfolioPosition[]; takenAt: string }> }>(
+      `/api/v1/portfolio/history?owner=${owner}`,
+    ),
+  setTarget: (body: { owner: string; allocations: Record<string, number> }) =>
+    request<{ ok: boolean; allocations: Record<string, number> }>("/api/v1/portfolio/target", { method: "POST", body }),
+
+  research: (asset: string) => request<ResearchResult>("/api/v1/research", { method: "POST", body: { asset } }),
+
+  tradeQuote: (body: { assetIn: string; assetOut: string; amount: string; slippageBps?: number }) =>
+    request<Quote>("/api/v1/trades/quote", { method: "POST", body }),
+  createTrade: (body: { owner: string; assetIn: string; assetOut: string; amount: string; maxSlippageBps?: number }) =>
+    request<TradeResult>("/api/v1/trades", { method: "POST", body }),
+  trades: (owner: string) => request<{ trades: TradeExecution[] }>(`/api/v1/trades?owner=${owner}`),
+  trade: (id: string) => request<TradeExecution>(`/api/v1/trades/${id}`),
+  approveTrade: (id: string) => request<TradeResult>(`/api/v1/trades/${id}/approve`, { method: "POST" }),
+
+  orchestrate: (body: { owner: string; message: string }) =>
+    request<OrchestrationResult>("/api/v1/orchestrate", { method: "POST", body }),
+
+  agentMemory: (owner: string) =>
+    request<{ count: number; memories: AgentMemory[] }>(`/api/v1/agents/memory?owner=${owner}`),
+  forgetMemory: (id: string) => request<{ ok: boolean }>(`/api/v1/agents/memory/${id}`, { method: "DELETE" }),
+  clearMemory: (owner: string) =>
+    request<{ ok: boolean }>("/api/v1/agents/memory/clear", { method: "POST", body: { owner } }),
 };
 
 export function errorMessage(error: unknown): string {
