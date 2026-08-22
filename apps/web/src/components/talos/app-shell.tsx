@@ -2,6 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
   ArrowUpRight,
+  Bot,
   Boxes,
   BrainCircuit,
   Coins,
@@ -9,8 +10,10 @@ import {
   KeyRound,
   LayoutDashboard,
   Menu,
+  PieChart,
   Send,
   Split,
+  TrendingUp,
   Wallet,
   X,
 } from "lucide-react";
@@ -26,8 +29,16 @@ type NavItem = { to: string; label: string; icon: ComponentType<{ className?: st
 const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
   {
     items: [
-      { to: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
+      { to: "/app", label: "Overview", icon: LayoutDashboard, exact: true },
       { to: "/app/notes", label: "Notes", icon: Boxes, exact: false },
+    ],
+  },
+  {
+    label: "Trading",
+    items: [
+      { to: "/app/trade", label: "AI Trading", icon: TrendingUp, exact: false },
+      { to: "/app/portfolio", label: "Portfolio", icon: PieChart, exact: false },
+      { to: "/app/agents", label: "Agents", icon: Bot, exact: false },
     ],
   },
   {
