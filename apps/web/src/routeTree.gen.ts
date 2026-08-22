@@ -15,6 +15,8 @@ import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppActivityRouteImport } from './routes/app/activity'
 import { Route as AppAgentRouteImport } from './routes/app/agent'
 import { Route as AppMergeRouteImport } from './routes/app/merge'
+import { Route as AppNotesRouteImport } from './routes/app/notes'
+import { Route as AppProfileRouteImport } from './routes/app/profile'
 import { Route as AppShieldRouteImport } from './routes/app/shield'
 import { Route as AppSplitRouteImport } from './routes/app/split'
 import { Route as AppTransferRouteImport } from './routes/app/transfer'
@@ -51,6 +53,16 @@ const AppMergeRoute = AppMergeRouteImport.update({
   path: '/merge',
   getParentRoute: () => AppRoute,
 } as any)
+const AppNotesRoute = AppNotesRouteImport.update({
+  id: '/notes',
+  path: '/notes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProfileRoute = AppProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppShieldRoute = AppShieldRouteImport.update({
   id: '/shield',
   path: '/shield',
@@ -83,6 +95,8 @@ export interface FileRoutesByFullPath {
   '/app/activity': typeof AppActivityRouteWithChildren
   '/app/agent': typeof AppAgentRoute
   '/app/merge': typeof AppMergeRoute
+  '/app/notes': typeof AppNotesRoute
+  '/app/profile': typeof AppProfileRoute
   '/app/shield': typeof AppShieldRoute
   '/app/split': typeof AppSplitRoute
   '/app/transfer': typeof AppTransferRoute
@@ -95,6 +109,8 @@ export interface FileRoutesByTo {
   '/app/activity': typeof AppActivityRouteWithChildren
   '/app/agent': typeof AppAgentRoute
   '/app/merge': typeof AppMergeRoute
+  '/app/notes': typeof AppNotesRoute
+  '/app/profile': typeof AppProfileRoute
   '/app/shield': typeof AppShieldRoute
   '/app/split': typeof AppSplitRoute
   '/app/transfer': typeof AppTransferRoute
@@ -109,6 +125,8 @@ export interface FileRoutesById {
   '/app/activity': typeof AppActivityRouteWithChildren
   '/app/agent': typeof AppAgentRoute
   '/app/merge': typeof AppMergeRoute
+  '/app/notes': typeof AppNotesRoute
+  '/app/profile': typeof AppProfileRoute
   '/app/shield': typeof AppShieldRoute
   '/app/split': typeof AppSplitRoute
   '/app/transfer': typeof AppTransferRoute
@@ -124,6 +142,8 @@ export interface FileRouteTypes {
     | '/app/activity'
     | '/app/agent'
     | '/app/merge'
+    | '/app/notes'
+    | '/app/profile'
     | '/app/shield'
     | '/app/split'
     | '/app/transfer'
@@ -136,6 +156,8 @@ export interface FileRouteTypes {
     | '/app/activity'
     | '/app/agent'
     | '/app/merge'
+    | '/app/notes'
+    | '/app/profile'
     | '/app/shield'
     | '/app/split'
     | '/app/transfer'
@@ -149,6 +171,8 @@ export interface FileRouteTypes {
     | '/app/activity'
     | '/app/agent'
     | '/app/merge'
+    | '/app/notes'
+    | '/app/profile'
     | '/app/shield'
     | '/app/split'
     | '/app/transfer'
@@ -206,6 +230,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMergeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/notes': {
+      id: '/app/notes'
+      path: '/notes'
+      fullPath: '/app/notes'
+      preLoaderRoute: typeof AppNotesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/profile': {
+      id: '/app/profile'
+      path: '/profile'
+      fullPath: '/app/profile'
+      preLoaderRoute: typeof AppProfileRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/shield': {
       id: '/app/shield'
       path: '/shield'
@@ -260,6 +298,8 @@ interface AppRouteChildren {
   AppActivityRoute: typeof AppActivityRouteWithChildren
   AppAgentRoute: typeof AppAgentRoute
   AppMergeRoute: typeof AppMergeRoute
+  AppNotesRoute: typeof AppNotesRoute
+  AppProfileRoute: typeof AppProfileRoute
   AppShieldRoute: typeof AppShieldRoute
   AppSplitRoute: typeof AppSplitRoute
   AppTransferRoute: typeof AppTransferRoute
@@ -271,6 +311,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppActivityRoute: AppActivityRouteWithChildren,
   AppAgentRoute: AppAgentRoute,
   AppMergeRoute: AppMergeRoute,
+  AppNotesRoute: AppNotesRoute,
+  AppProfileRoute: AppProfileRoute,
   AppShieldRoute: AppShieldRoute,
   AppSplitRoute: AppSplitRoute,
   AppTransferRoute: AppTransferRoute,
