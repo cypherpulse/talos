@@ -142,6 +142,12 @@ export interface AgentStep {
     status?: OperationStatus;
     txHash?: string;
     reason?: string;
+    // Non-custodial action the UI must complete (e.g. a wallet-signed shield).
+    actionRequired?: string;
+    assetId?: number;
+    amount?: string;
+    guardOperationId?: string;
+    message?: string;
   };
 }
 
