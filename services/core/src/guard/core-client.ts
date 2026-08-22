@@ -25,7 +25,8 @@ export interface OperationView {
  * `app.request` in-process for deterministic tests, or `fetch` in production.
  */
 export class CoreClient {
-  constructor(private readonly req: RequestFn) {}
+  // `owner` scopes note listings to a single connected wallet (per-user agent view).
+  constructor(private readonly req: RequestFn, private readonly owner?: string) {}
 
   private async json<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await this.req(path, init);
@@ -33,7 +34,7 @@ export class CoreClient {
   }
 
   listNotes(): Promise<{ notes: NotePublic[] }> {
-    return this.json("/api/v1/notes");
+    return this.json(`/api/v1/notes${this.owner ? `?owner=${encodeURIComponent(this.owner)}` : ""}`);
   }
   getNote(id: string): Promise<NotePublic> {
     return this.json(`/api/v1/notes/${id}`);
