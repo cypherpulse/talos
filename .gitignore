@@ -27,20 +27,21 @@ contracts/cache/
 contracts/broadcast/
 contracts/lib/forge-std/
 
-# ZK generated artifacts — NEVER commit proving keys, trusted-setup, witnesses,
-# or large compiled circuit outputs. Regenerate with `pnpm zk:build && pnpm zk:setup`.
-circuits/build/**/*.zkey
+# ZK artifacts. We DO commit the runtime proving artifacts (prover .wasm, final .zkey,
+# and verification keys) so the deployed Core Server can generate proofs. Trusted-setup,
+# intermediate, and per-run/secret files are never committed (regenerate with
+# `pnpm zk:build && pnpm zk:setup`).
 circuits/build/**/*.ptau
 circuits/build/ptau/
 circuits/build/**/*.r1cs
-circuits/build/**/*.wasm
 circuits/build/**/*.sym
 circuits/build/**/*.wtns
-circuits/build/**/*_js/
 circuits/build/**/witness.wtns
-circuits/build/**/verification_key.json
 circuits/build/**/proof.json
 circuits/build/**/public.json
+# Ignore intermediate zkeys but keep the final proving keys (needed at runtime).
+circuits/build/**/*.zkey
+!circuits/build/**/*_final.zkey
 # NEVER commit witness input files — they contain private note secrets.
 **/*.witness.json
 **/inputs/*.json

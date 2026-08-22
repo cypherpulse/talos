@@ -241,11 +241,10 @@ export class ExecutionEngine {
     const note = await this.d.notes.createNote({ assetId, value: amount, owner });
     op = await this.d.repos.operations.update({ ...op, noteIds: [note.id] });
 
+    // The pool deposit is proofless on-chain (the commitment alone is inserted), so the
+    // non-custodial flow needs no binding proof — we just advance the state machine.
     op = await this.setStatus(op, "PROVING");
-    const proofPkg = await this.d.proofs.prove("DEPOSIT", depositWitness(note));
-    const proofId = `proof_${randomUUID()}`;
-    await this.d.repos.proofs.create(proofId, proofPkg);
-    op = await this.setStatus(op, "PROOF_READY", { proofId });
+    op = await this.setStatus(op, "PROOF_READY");
     op = await this.setStatus(op, "READY_TO_SUBMIT");
     return { op, commitment: note.commitment };
   }
