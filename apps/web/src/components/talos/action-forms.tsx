@@ -5,6 +5,7 @@ import { talosApi, newIdempotencyKey } from "@/lib/talos/api";
 import { useAvailableNotes, useTrackedOperations } from "@/lib/talos/hooks";
 import { useWallet } from "@/lib/talos/wallet";
 import { assetById, formatAssetAmount, useAssets } from "@/lib/talos/assets";
+import { decodeKey } from "@/lib/talos/keys";
 import {
   encodeApprove,
   encodeDeposit,
@@ -346,7 +347,8 @@ export function TransferForm() {
 
   const base = parseUnits(amount);
   const withinValue = note && base !== null && BigInt(base) <= BigInt(note.value) && BigInt(base) > 0n;
-  const validKey = /^\d{6,}$/.test(pubKey.trim());
+  const decodedPub = decodeKey(pubKey);
+  const validKey = decodedPub !== null;
   const change = note && base !== null ? (BigInt(note.value) - BigInt(base)).toString() : null;
   const valid = Boolean(note && withinValue && validKey);
 
@@ -368,9 +370,15 @@ export function TransferForm() {
           </div>
         </Field>
       </div>
-      <Field label="Recipient Talos owner key" hint="A Talos owner public key (decimal field element)">
-        <TextInput value={pubKey} onChange={(e) => setPubKey(e.target.value)} placeholder="e.g. 1832…4471" />
+      <Field
+        label="Recipient Talos key"
+        hint="Paste the recipient's tpub… key (they get it from their Profile page)"
+      >
+        <TextInput value={pubKey} onChange={(e) => setPubKey(e.target.value)} placeholder="tpub…" />
       </Field>
+      {pubKey && !validKey ? (
+        <p className="mono text-xs text-destructive">That doesn't look like a valid tpub… key.</p>
+      ) : null}
       <SubmitButton
         pending={pending}
         disabled={!valid}
@@ -378,7 +386,7 @@ export function TransferForm() {
           valid &&
           submit(() =>
             talosApi.transfer(
-              { noteId, amount1: base!, amount2: change!, recipientOwnerPubKey: pubKey.trim() },
+              { noteId, amount1: base!, amount2: change!, recipientOwnerPubKey: decodedPub! },
               newIdempotencyKey(),
             ),
           )
