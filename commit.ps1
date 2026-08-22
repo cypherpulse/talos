@@ -13,7 +13,15 @@ $modifiedFiles = ($modifiedUnstaged + $modifiedStaged) | Select-Object -Unique
 $allFiles = ($untrackedFiles + $modifiedFiles) | Select-Object -Unique
 
 # Comprehensive commit message for Hermes Bridge project
-$commitMessage = "feat: Adding asset registry and improving the UI"
+$commitMessage = "feat: add key generation and profile management for Talos identity
+
+- Implemented API endpoint for generating Talos keys (spendingKey and ownerPublicKey).
+- Added functionality to manage Talos identity in the profile page, including key generation and regeneration.
+- Introduced UI components for displaying and copying public and spending keys.
+- Enhanced agent messaging to include owner address for scoped actions.
+- Updated deposit handling to require user action for non-custodial transactions.
+- Added notes page to display private notes and their shielded balances.
+- Introduced utility functions for encoding and managing Talos identity keys."
 
 # Commit each file individually
 foreach ($file in $allFiles) {
