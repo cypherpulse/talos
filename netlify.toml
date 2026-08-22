@@ -10,6 +10,12 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  # X Layer testnet (public VITE_ vars, embedded at build time).
+  VITE_CHAIN_ID = "1952"
+  VITE_XLAYER_RPC_URL = "https://testrpc.xlayer.tech/terigon"
+  VITE_XLAYER_EXPLORER_URL = "https://www.okx.com/web3/explorer/xlayer-test"
+  # Deployed Core Server (override in the Netlify UI if it changes).
+  VITE_TALOS_API_BASE_URL = "https://talos-c4wi.onrender.com"
 
 # SPA fallback — serve the prerendered shell for any unmatched (client-routed) path.
 [[redirects]]

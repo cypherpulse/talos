@@ -20,10 +20,11 @@ export const API_BASE_URL: string = (
 
 export const EXPLORER_URL: string = (
   (import.meta.env["VITE_XLAYER_EXPLORER_URL"] as string | undefined) ??
-  "https://www.oklink.com/xlayer"
+  "https://www.okx.com/web3/explorer/xlayer-test"
 ).replace(/\/+$/, "");
 
-export const CHAIN_ID = Number(import.meta.env["VITE_CHAIN_ID"] ?? 195);
+// X Layer testnet chain id is 1952 (the /terigon RPC reports 1952).
+export const CHAIN_ID = Number(import.meta.env["VITE_CHAIN_ID"] ?? 1952);
 
 export function explorerTxUrl(txHash: string): string {
   return `${EXPLORER_URL}/tx/${txHash}`;

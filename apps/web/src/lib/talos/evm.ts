@@ -15,7 +15,8 @@ export type Eip1193 = {
 const RPC_URL: string =
   (import.meta.env["VITE_XLAYER_RPC_URL"] as string | undefined) ?? "https://testrpc.xlayer.tech/terigon";
 const EXPLORER: string =
-  (import.meta.env["VITE_XLAYER_EXPLORER_URL"] as string | undefined) ?? "https://www.oklink.com/xlayer-test";
+  (import.meta.env["VITE_XLAYER_EXPLORER_URL"] as string | undefined) ??
+  "https://www.okx.com/web3/explorer/xlayer-test";
 const CHAIN_HEX = "0x" + CHAIN_ID.toString(16);
 
 export function getInjected(): Eip1193 | null {
@@ -72,9 +73,9 @@ export async function ensureChain(p: Eip1193): Promise<void> {
         params: [
           {
             chainId: CHAIN_HEX,
-            chainName: "X Layer Testnet",
+            chainName: "X Layer testnet",
             nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
-            rpcUrls: [RPC_URL],
+            rpcUrls: [RPC_URL, "https://xlayertestrpc.okx.com/terigon"],
             blockExplorerUrls: [EXPLORER],
           },
         ],
