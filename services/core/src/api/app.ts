@@ -4,7 +4,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { z, ZodError } from "zod";
 import type { Services } from "../services.js";
 import type { Logger } from "../observability/logger.js";
-import { isTalosError, OperationNotFound } from "../errors/index.js";
+import { isTalosError, InvalidRequest, OperationNotFound } from "../errors/index.js";
 import { toNotePublic, type OperationRecord, type OperationType } from "../domain/types.js";
 import { requestId, rateLimit } from "./middleware.js";
 import { DepositSchema, MergeSchema, SplitSchema, TransferSchema, WithdrawSchema } from "./schemas.js";
@@ -42,7 +42,7 @@ function sanitizeOperation(op: OperationRecord) {
  * operations are exposed; there is NO generic RPC/eth_sendTransaction endpoint (§31).
  */
 export function createApp(services: Services): Hono<Env> {
-  const { engine, dispatcher, repos, chain, contract, proofs, logger } = services;
+  const { engine, dispatcher, repos, chain, contract, proofs, logger, agents } = services;
   const app = new Hono<Env>();
 
   app.use("*", requestId());
@@ -228,6 +228,98 @@ export function createApp(services: Services): Hono<Env> {
     const guard = new TalosGuard(scopedCore, identity, policy, audit, logger);
     const agent = new TalosAgent(llm, { core: scopedCore, guard, logger, ...(owner ? { owner: owner.toLowerCase() } : {}) }, logger);
     return c.json(await agent.handle(message));
+  });
+
+  // --- Multi-agent trading (Phase 6) ---
+  const addr = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
+  const ownerParam = (c: Context<Env>): string => {
+    const owner = c.req.query("owner");
+    if (!owner || !/^0x[0-9a-fA-F]{40}$/.test(owner)) throw InvalidRequest("owner query param (wallet address) is required");
+    return owner.toLowerCase();
+  };
+
+  app.get("/api/v1/agents", async (c) => c.json({ agents: await agents.listAgents(ownerParam(c)) }));
+  // Only the Trading Agent owns a wallet — Research/Portfolio are read-only cognitive agents.
+  app.post("/api/v1/agents", async (c) => {
+    const body = z.object({ owner: addr, role: z.literal("TRADER"), name: z.string().max(80).optional() }).parse(await c.req.json());
+    return c.json(await agents.getTradingAgent(body.owner), 201);
+  });
+
+  // Agent memory (preferences / decisions / history — never secrets). Defined before /:id.
+  app.get("/api/v1/agents/memory", async (c) => {
+    const owner = ownerParam(c);
+    const [memories, count] = await Promise.all([agents.listMemory(owner, 50), agents.memoryCount(owner)]);
+    return c.json({ count, memories });
+  });
+  app.post("/api/v1/agents/memory/clear", async (c) => {
+    const { owner } = z.object({ owner: addr }).parse(await c.req.json());
+    await agents.clearMemory(owner);
+    return c.json({ ok: true });
+  });
+  app.delete("/api/v1/agents/memory/:id", async (c) => {
+    await agents.forgetMemory(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/v1/agents/:id", async (c) => {
+    const agent = await agents.getAgent(c.req.param("id"));
+    if (!agent) throw OperationNotFound("agent not found");
+    return c.json(agent);
+  });
+  app.get("/api/v1/agents/:id/receive-identity", async (c) => {
+    const id = await agents.getReceiveIdentity(c.req.param("id"));
+    if (!id) throw OperationNotFound("agent not found");
+    return c.json(id);
+  });
+  app.post("/api/v1/agents/:id/transfer", async (c) => {
+    const body = z
+      .object({ owner: addr, toAgentId: z.string().optional(), toPublicKey: z.string().optional(), assetId: z.number().int().positive(), amount: z.string().regex(/^\d+$/) })
+      .parse(await c.req.json());
+    return c.json(await agents.transfer(body.owner, c.req.param("id"), body), 202);
+  });
+
+  app.get("/api/v1/portfolio", async (c) => c.json(await agents.getPortfolio(ownerParam(c))));
+  app.get("/api/v1/portfolio/history", async (c) => c.json({ snapshots: await agents.portfolioHistory(ownerParam(c)) }));
+  app.post("/api/v1/portfolio/target", async (c) => {
+    const body = z.object({ owner: addr, allocations: z.record(z.number()) }).parse(await c.req.json());
+    await agents.setTarget(body.owner, body.allocations);
+    return c.json({ ok: true, allocations: body.allocations });
+  });
+
+  app.post("/api/v1/research", async (c) => {
+    const body = z.object({ asset: z.string().min(1).max(20) }).parse(await c.req.json());
+    return c.json(await agents.researchAsset(body.asset));
+  });
+
+  const tradeReq = z.object({ assetIn: z.string(), assetOut: z.string(), amount: z.string().regex(/^\d+$/), slippageBps: z.number().int().optional() });
+  app.post("/api/v1/trades/quote", async (c) => c.json(await agents.quote(tradeReq.parse(await c.req.json()))));
+  app.post("/api/v1/trades/simulate", async (c) => {
+    const body = tradeReq.extend({ wallet: addr }).parse(await c.req.json());
+    return c.json(await agents.simulate(body));
+  });
+  app.post("/api/v1/trades", async (c) => {
+    const body = z.object({ owner: addr, assetIn: z.string(), assetOut: z.string(), amount: z.string().regex(/^\d+$/), maxSlippageBps: z.number().int().optional() }).parse(await c.req.json());
+    const result = await agents.createTrade(body.owner, body);
+    return c.json(result, result.decision === "REJECTED" ? 403 : 202);
+  });
+  app.get("/api/v1/trades", async (c) => c.json({ trades: await agents.listTrades(ownerParam(c)) }));
+  app.get("/api/v1/trades/:id", async (c) => {
+    const t = await agents.getTrade(c.req.param("id"));
+    if (!t) throw OperationNotFound("trade not found");
+    return c.json(t);
+  });
+  app.post("/api/v1/trades/:id/approve", async (c) => c.json(await agents.approveTrade(c.req.param("id")), 202));
+
+  // Typed agent tools (prices + swaps). Read-only; never expose keys/RPC.
+  app.get("/api/v1/tools", (c) => c.json({ tools: agents.listTools() }));
+  app.post("/api/v1/tools/:name", async (c) => {
+    const input = await c.req.json().catch(() => ({}));
+    return c.json({ result: await agents.invokeTool(c.req.param("name"), input) });
+  });
+
+  app.post("/api/v1/orchestrate", async (c) => {
+    const body = z.object({ owner: addr, message: z.string().min(1).max(2000) }).parse(await c.req.json());
+    return c.json(await agents.orchestrate(body.owner, body.message));
   });
 
   return app;
