@@ -40,9 +40,15 @@ export function assetById(assets: Asset[], id: number | string): Asset {
   );
 }
 
-/** Format a base-unit amount using a specific asset's decimals. */
+/** USD-pegged stablecoins are shown with a `$` prefix; other assets (e.g. OKB) are not. */
+export function isUsdStable(asset: Asset): boolean {
+  return asset.symbol === "USDC" || asset.symbol === "USDT" || asset.symbol === "USDG";
+}
+
+/** Format a base-unit amount using a specific asset's decimals, `$`-prefixed for USD stables. */
 export function formatAssetAmount(base: string | bigint, asset: Asset): string {
-  return formatUnits(base, asset.decimals);
+  const value = formatUnits(base, asset.decimals);
+  return isUsdStable(asset) ? `$${value}` : value;
 }
 
 /** Format `<amount> <SYMBOL>` for a note using its own asset. */
