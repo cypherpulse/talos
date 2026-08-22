@@ -1,4 +1,4 @@
-import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, vector } from "drizzle-orm/pg-core";
 
 /**
  * PostgreSQL schema (Phase 4 §27) via Drizzle. Field elements are stored as decimal
@@ -137,3 +137,115 @@ export const syncState = pgTable("sync_state", {
   key: text("key").primaryKey(),
   value: integer("value").notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// Phase 6 — multi-agent trading. Private key material is stored ONLY in the
+// encrypted *_key_blob columns (AES-256-GCM), never in plaintext.
+// ---------------------------------------------------------------------------
+
+export const agents = pgTable(
+  "agents",
+  {
+    id: text("id").primaryKey(),
+    owner: text("owner").notNull(), // user wallet that owns this agent (lowercased)
+    role: text("role").notNull(), // RESEARCH | TRADER | PORTFOLIO
+    name: text("name").notNull(),
+    walletAddress: text("wallet_address").notNull(), // agent EOA on X Layer
+    walletKeyBlob: text("wallet_key_blob").notNull(), // encrypted EOA private key
+    talosPublicKey: text("talos_public_key").notNull(), // owner pub key (decimal) for receiving notes
+    spendingKeyBlob: text("spending_key_blob").notNull(), // encrypted Talos spending key
+    status: text("status").notNull().default("ACTIVE"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    ownerRoleIdx: uniqueIndex("agents_owner_role_idx").on(t.owner, t.role),
+    ownerIdx: index("agents_owner_idx").on(t.owner),
+  }),
+);
+
+export const tradeIntents = pgTable("trade_intents", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  owner: text("owner").notNull(),
+  assetIn: text("asset_in").notNull(),
+  assetOut: text("asset_out").notNull(),
+  amount: text("amount").notNull(),
+  maxSlippageBps: integer("max_slippage_bps").notNull(),
+  status: text("status").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const tradeExecutions = pgTable(
+  "trade_executions",
+  {
+    id: text("id").primaryKey(),
+    intentId: text("intent_id").notNull(),
+    agentId: text("agent_id").notNull(),
+    owner: text("owner").notNull(),
+    provider: text("provider").notNull(),
+    fromAmount: text("from_amount").notNull(),
+    toAmount: text("to_amount").notNull().default("0"),
+    valueUsd: text("value_usd").notNull().default("0"),
+    status: text("status").notNull(),
+    txHash: text("tx_hash"),
+    failReason: text("fail_reason"),
+    quote: jsonb("quote").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ ownerIdx: index("trade_executions_owner_idx").on(t.owner) }),
+);
+
+export const agentTransfers = pgTable("agent_transfers", {
+  id: text("id").primaryKey(),
+  fromAgentId: text("from_agent_id").notNull(),
+  toPublicKey: text("to_public_key").notNull(),
+  assetId: integer("asset_id").notNull(),
+  amount: text("amount").notNull(),
+  operationId: text("operation_id"),
+  status: text("status").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const portfolioSnapshots = pgTable(
+  "portfolio_snapshots",
+  {
+    id: text("id").primaryKey(),
+    owner: text("owner").notNull(),
+    totalValueUsd: text("total_value_usd").notNull(),
+    positions: jsonb("positions").notNull().$type<unknown[]>(),
+    takenAt: timestamp("taken_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ ownerIdx: index("portfolio_snapshots_owner_idx").on(t.owner) }),
+);
+
+export const targetAllocations = pgTable("target_allocations", {
+  owner: text("owner").primaryKey(),
+  allocations: jsonb("allocations").notNull().$type<Record<string, number>>(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Agent memory (Phase 6): durable preferences, decisions and history. NEVER stores key
+ * material or secrets. `embedding` is reserved for pgvector semantic search; retrieval
+ * currently ranks by importance + recency, so no extension is required to run.
+ */
+export const agentMemory = pgTable(
+  "agent_memory",
+  {
+    id: text("id").primaryKey(),
+    owner: text("owner").notNull(),
+    agentId: text("agent_id"),
+    memoryType: text("memory_type").notNull(), // WORKING | SEMANTIC | EPISODIC
+    content: text("content").notNull(),
+    asset: text("asset"),
+    importance: integer("importance").notNull().default(1),
+    embedding: vector("embedding", { dimensions: 1536 }), // pgvector semantic memory
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    ownerIdx: index("agent_memory_owner_idx").on(t.owner),
+    typeIdx: index("agent_memory_type_idx").on(t.memoryType),
+  }),
+);
