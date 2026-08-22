@@ -16,8 +16,8 @@ import { createDb } from "./database/connection.js";
 import { migrate } from "./database/migrate.js";
 import { createPostgresRepositories } from "./database/postgres.js";
 import { NoteEncryptionService } from "./notes/encryption.js";
-import { RedisLockService } from "./execution/locks.js";
-import { buildServices } from "./services.js";
+import { InMemoryLockService, RedisLockService, type LockService } from "./execution/locks.js";
+import { buildServices, type BuildOptions } from "./services.js";
 import { createApp } from "./api/app.js";
 import {
   BullMqDispatcher,
@@ -25,6 +25,7 @@ import {
   createRedisConnection,
   startOperationWorker,
 } from "./workers/index.js";
+import type { Redis } from "ioredis";
 
 /**
  * Talos Core Server entrypoint. Wires the production stack: PostgreSQL (durable
@@ -45,11 +46,28 @@ async function main(): Promise<void> {
   const encryption = new NoteEncryptionService(config.noteEncryptionKey);
   const repos = createPostgresRepositories(db, encryption);
 
-  const redisUrl = config.redisUrl ?? "redis://localhost:6379";
-  const redis = createRedisConnection(redisUrl);
-  const locks = new RedisLockService(redis);
-  const queueConnection = createRedisConnection(redisUrl);
-  const queue = createOperationsQueue(queueConnection);
+  // Redis is optional. With a valid redis:// / rediss:// URL we use distributed locks +
+  // a BullMQ queue (multi-instance). Otherwise we fall back to in-process locks and
+  // inline execution — single-instance, but self-contained (no external Redis needed).
+  const redisUrl = config.redisUrl;
+  const useRedis = Boolean(redisUrl && /^rediss?:\/\//.test(redisUrl));
+
+  let locks: LockService;
+  let redis: Redis | undefined;
+  let queue: ReturnType<typeof createOperationsQueue> | undefined;
+  let queueConnection: Redis | undefined;
+  let dispatcherFactory: BuildOptions["dispatcherFactory"];
+
+  if (useRedis && redisUrl) {
+    redis = createRedisConnection(redisUrl);
+    locks = new RedisLockService(redis);
+    queueConnection = createRedisConnection(redisUrl);
+    queue = createOperationsQueue(queueConnection);
+    dispatcherFactory = (() => new BullMqDispatcher(queue!)) as BuildOptions["dispatcherFactory"];
+  } else {
+    logger.warn("Redis not configured — using in-memory locks + inline execution (single-instance)");
+    locks = new InMemoryLockService();
+  }
 
   // Start the event scan at the pool's deployment block (scanning from 0 is wasteful
   // and the RPC caps eth_getLogs at a 100-block range — see MerkleSynchronizer).
@@ -61,10 +79,10 @@ async function main(): Promise<void> {
     logger,
     locks,
     fromBlock,
-    dispatcherFactory: () => new BullMqDispatcher(queue),
+    ...(dispatcherFactory ? { dispatcherFactory } : {}),
   });
 
-  if (config.runWorkers) {
+  if (useRedis && queueConnection && config.runWorkers) {
     startOperationWorker(queueConnection, services.engine, logger);
     logger.info("operation worker started");
   }
@@ -76,8 +94,9 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info("shutting down", { signal });
-    await queue.close().catch(() => {});
-    await redis.quit().catch(() => {});
+    await queue?.close().catch(() => {});
+    await redis?.quit().catch(() => {});
+    await queueConnection?.quit().catch(() => {});
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));

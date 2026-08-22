@@ -26,7 +26,20 @@ export const QUEUE_NAMES = [
 export const OPERATIONS_QUEUE = "operations";
 
 export function createRedisConnection(url: string): IORedis {
-  return new IORedis(url, { maxRetriesPerRequest: null });
+  // `rediss://` enables TLS (required by Upstash and most hosted Redis). BullMQ requires
+  // maxRetriesPerRequest: null. Attach an error handler so a transient connection error
+  // is logged rather than crashing the process as an "unhandled error event".
+  const isTls = url.startsWith("rediss://");
+  const conn = new IORedis(url, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    ...(isTls ? { tls: {} } : {}),
+  });
+  conn.on("error", (err) => {
+    // eslint-disable-next-line no-console
+    console.error("[redis] connection error:", err instanceof Error ? err.message : String(err));
+  });
+  return conn;
 }
 
 export class BullMqDispatcher implements OperationDispatcher {
