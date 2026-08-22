@@ -1,6 +1,14 @@
 import type { Note, NoteState, OperationRecord, ProofPackage, TransactionRecord } from "../domain/types.js";
 import type {
+  AgentMemoryRecord,
+  AgentMemoryRepository,
+  AgentRecord,
+  AgentRole,
+  AgentsRepository,
+  AgentTransferRecord,
+  AgentTransfersRepository,
   BlockchainEvent,
+  MemoryType,
   EventsRepository,
   IdempotencyRepository,
   MerkleLeaf,
@@ -8,8 +16,15 @@ import type {
   NotesRepository,
   NullifiersRepository,
   OperationsRepository,
+  PortfolioRepository,
+  PortfolioSnapshotRecord,
   ProofsRepository,
   Repositories,
+  StoredAgent,
+  TradeExecutionRecord,
+  TradeExecutionsRepository,
+  TradeIntentRecord,
+  TradeIntentsRepository,
   TransactionsRepository,
 } from "./repositories.js";
 
@@ -170,6 +185,142 @@ class MemIdempotency implements IdempotencyRepository {
   }
 }
 
+// ---- Phase 6 in-memory repositories ----
+
+class MemAgents implements AgentsRepository {
+  private m = new Map<string, StoredAgent>();
+  private pub(a: StoredAgent): AgentRecord {
+    const { walletKeyBlob: _w, spendingKeyBlob: _s, ...pub } = a;
+    return pub;
+  }
+  async create(a: StoredAgent) {
+    this.m.set(a.id, { ...a });
+    return this.pub(a);
+  }
+  async get(id: string) {
+    const a = this.m.get(id);
+    return a ? this.pub(a) : null;
+  }
+  async getByOwnerRole(owner: string, role: AgentRole) {
+    for (const a of this.m.values()) if (a.owner === owner && a.role === role) return this.pub(a);
+    return null;
+  }
+  async listByOwner(owner: string) {
+    return [...this.m.values()].filter((a) => a.owner === owner).map((a) => this.pub(a));
+  }
+  async getSecretBlobs(id: string) {
+    const a = this.m.get(id);
+    return a ? { walletKeyBlob: a.walletKeyBlob, spendingKeyBlob: a.spendingKeyBlob } : null;
+  }
+  async setStatus(id: string, status: "ACTIVE" | "DISABLED") {
+    const a = this.m.get(id);
+    if (a) a.status = status;
+  }
+}
+
+class MemTradeIntents implements TradeIntentsRepository {
+  private m = new Map<string, TradeIntentRecord>();
+  async create(i: TradeIntentRecord) {
+    this.m.set(i.id, { ...i });
+    return i;
+  }
+  async get(id: string) {
+    const i = this.m.get(id);
+    return i ? { ...i } : null;
+  }
+  async listByOwner(owner: string, limit = 100) {
+    return [...this.m.values()].filter((i) => i.owner === owner).slice(-limit).reverse();
+  }
+}
+
+class MemTradeExecutions implements TradeExecutionsRepository {
+  private m = new Map<string, TradeExecutionRecord>();
+  async create(e: TradeExecutionRecord) {
+    this.m.set(e.id, { ...e });
+    return e;
+  }
+  async get(id: string) {
+    const e = this.m.get(id);
+    return e ? { ...e } : null;
+  }
+  async update(e: TradeExecutionRecord) {
+    this.m.set(e.id, { ...e });
+    return e;
+  }
+  async listByOwner(owner: string, limit = 100) {
+    return [...this.m.values()].filter((e) => e.owner === owner).slice(-limit).reverse();
+  }
+  async sumValueUsdSince(owner: string, sinceIso: string) {
+    const since = new Date(sinceIso).getTime();
+    return [...this.m.values()]
+      .filter((e) => e.owner === owner && new Date(e.createdAt).getTime() >= since)
+      .reduce((sum, e) => sum + (Number(e.valueUsd) || 0), 0);
+  }
+}
+
+class MemAgentTransfers implements AgentTransfersRepository {
+  private m = new Map<string, AgentTransferRecord>();
+  async create(t: AgentTransferRecord) {
+    this.m.set(t.id, { ...t });
+    return t;
+  }
+  async update(t: AgentTransferRecord) {
+    this.m.set(t.id, { ...t });
+    return t;
+  }
+  async listByAgent(agentId: string, limit = 100) {
+    return [...this.m.values()].filter((t) => t.fromAgentId === agentId).slice(-limit).reverse();
+  }
+}
+
+class MemPortfolio implements PortfolioRepository {
+  private snaps: PortfolioSnapshotRecord[] = [];
+  private targets = new Map<string, Record<string, number>>();
+  async saveSnapshot(snap: PortfolioSnapshotRecord) {
+    this.snaps.push({ ...snap });
+  }
+  async latest(owner: string) {
+    const owned = this.snaps.filter((s) => s.owner === owner);
+    return owned.length ? { ...owned[owned.length - 1]! } : null;
+  }
+  async history(owner: string, limit = 50) {
+    return this.snaps.filter((s) => s.owner === owner).slice(-limit).reverse();
+  }
+  async getTarget(owner: string) {
+    return this.targets.get(owner) ?? null;
+  }
+  async setTarget(owner: string, allocations: Record<string, number>) {
+    this.targets.set(owner, allocations);
+  }
+}
+
+class MemAgentMemory implements AgentMemoryRepository {
+  private m = new Map<string, AgentMemoryRecord>();
+  async create(x: AgentMemoryRecord, _embedding?: number[] | null) {
+    this.m.set(x.id, { ...x });
+    return x;
+  }
+  async recall(owner: string, opts?: { types?: MemoryType[]; limit?: number }) {
+    return [...this.m.values()]
+      .filter((x) => x.owner === owner && (!opts?.types?.length || opts.types.includes(x.memoryType)))
+      .sort((a, b) => b.importance - a.importance || (a.createdAt < b.createdAt ? 1 : -1))
+      .slice(0, opts?.limit ?? 20);
+  }
+  async recallSimilar(owner: string, _embedding: number[], opts?: { types?: MemoryType[]; limit?: number }) {
+    // No vector index in memory — fall back to importance/recency.
+    return this.recall(owner, opts);
+  }
+  async count(owner: string) {
+    return [...this.m.values()].filter((x) => x.owner === owner).length;
+  }
+  async delete(id: string) {
+    this.m.delete(id);
+  }
+  async clear(owner: string) {
+    for (const [id, x] of this.m) if (x.owner === owner) this.m.delete(id);
+  }
+}
+
 export function createInMemoryRepositories(): Repositories {
   return {
     notes: new MemNotes(),
@@ -180,5 +331,11 @@ export function createInMemoryRepositories(): Repositories {
     nullifiers: new MemNullifiers(),
     events: new MemEvents(),
     idempotency: new MemIdempotency(),
+    agents: new MemAgents(),
+    tradeIntents: new MemTradeIntents(),
+    tradeExecutions: new MemTradeExecutions(),
+    agentTransfers: new MemAgentTransfers(),
+    portfolio: new MemPortfolio(),
+    memory: new MemAgentMemory(),
   };
 }
