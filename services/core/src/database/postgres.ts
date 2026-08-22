@@ -1,9 +1,17 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, cosineDistance, desc, eq, gte, inArray, isNotNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { Note, NoteState, OperationRecord, ProofPackage, TransactionRecord } from "../domain/types.js";
 import type { NoteEncryptionService } from "../notes/encryption.js";
 import type {
+  AgentMemoryRecord,
+  AgentMemoryRepository,
+  AgentRecord,
+  AgentRole,
+  AgentsRepository,
+  AgentTransferRecord,
+  AgentTransfersRepository,
   BlockchainEvent,
+  MemoryType,
   EventsRepository,
   IdempotencyRepository,
   MerkleLeaf,
@@ -11,8 +19,15 @@ import type {
   NotesRepository,
   NullifiersRepository,
   OperationsRepository,
+  PortfolioRepository,
+  PortfolioSnapshotRecord,
   ProofsRepository,
   Repositories,
+  StoredAgent,
+  TradeExecutionRecord,
+  TradeExecutionsRepository,
+  TradeIntentRecord,
+  TradeIntentsRepository,
   TransactionsRepository,
 } from "./repositories.js";
 import * as s from "./schema.js";
@@ -316,6 +331,197 @@ class PgIdempotency implements IdempotencyRepository {
   }
 }
 
+// ---- Phase 6 repositories ----
+
+class PgAgents implements AgentsRepository {
+  constructor(private db: DB) {}
+  private pub(r: typeof s.agents.$inferSelect): AgentRecord {
+    return {
+      id: r.id,
+      owner: r.owner,
+      role: r.role as AgentRole,
+      name: r.name,
+      walletAddress: r.walletAddress,
+      talosPublicKey: r.talosPublicKey,
+      status: r.status as "ACTIVE" | "DISABLED",
+      createdAt: iso(r.createdAt),
+    };
+  }
+  async create(a: StoredAgent) {
+    await this.db.insert(s.agents).values({
+      id: a.id,
+      owner: a.owner,
+      role: a.role,
+      name: a.name,
+      walletAddress: a.walletAddress,
+      walletKeyBlob: a.walletKeyBlob,
+      talosPublicKey: a.talosPublicKey,
+      spendingKeyBlob: a.spendingKeyBlob,
+      status: a.status,
+    });
+    return { id: a.id, owner: a.owner, role: a.role, name: a.name, walletAddress: a.walletAddress, talosPublicKey: a.talosPublicKey, status: a.status, createdAt: a.createdAt };
+  }
+  async get(id: string) {
+    const [r] = await this.db.select().from(s.agents).where(eq(s.agents.id, id)).limit(1);
+    return r ? this.pub(r) : null;
+  }
+  async getByOwnerRole(owner: string, role: AgentRole) {
+    const [r] = await this.db.select().from(s.agents).where(and(eq(s.agents.owner, owner), eq(s.agents.role, role))).limit(1);
+    return r ? this.pub(r) : null;
+  }
+  async listByOwner(owner: string) {
+    const rows = await this.db.select().from(s.agents).where(eq(s.agents.owner, owner)).orderBy(asc(s.agents.createdAt));
+    return rows.map((r) => this.pub(r));
+  }
+  async getSecretBlobs(id: string) {
+    const [r] = await this.db.select().from(s.agents).where(eq(s.agents.id, id)).limit(1);
+    return r ? { walletKeyBlob: r.walletKeyBlob, spendingKeyBlob: r.spendingKeyBlob } : null;
+  }
+  async setStatus(id: string, status: "ACTIVE" | "DISABLED") {
+    await this.db.update(s.agents).set({ status }).where(eq(s.agents.id, id));
+  }
+}
+
+class PgTradeIntents implements TradeIntentsRepository {
+  constructor(private db: DB) {}
+  private map(r: typeof s.tradeIntents.$inferSelect): TradeIntentRecord {
+    return { id: r.id, agentId: r.agentId, owner: r.owner, assetIn: r.assetIn, assetOut: r.assetOut, amount: r.amount, maxSlippageBps: r.maxSlippageBps, status: r.status, createdAt: iso(r.createdAt) };
+  }
+  async create(i: TradeIntentRecord) {
+    await this.db.insert(s.tradeIntents).values({ id: i.id, agentId: i.agentId, owner: i.owner, assetIn: i.assetIn, assetOut: i.assetOut, amount: i.amount, maxSlippageBps: i.maxSlippageBps, status: i.status });
+    return i;
+  }
+  async get(id: string) {
+    const [r] = await this.db.select().from(s.tradeIntents).where(eq(s.tradeIntents.id, id)).limit(1);
+    return r ? this.map(r) : null;
+  }
+  async listByOwner(owner: string, limit = 100) {
+    const rows = await this.db.select().from(s.tradeIntents).where(eq(s.tradeIntents.owner, owner)).orderBy(desc(s.tradeIntents.createdAt)).limit(limit);
+    return rows.map((r) => this.map(r));
+  }
+}
+
+class PgTradeExecutions implements TradeExecutionsRepository {
+  constructor(private db: DB) {}
+  private map(r: typeof s.tradeExecutions.$inferSelect): TradeExecutionRecord {
+    return { id: r.id, intentId: r.intentId, agentId: r.agentId, owner: r.owner, provider: r.provider, fromAmount: r.fromAmount, toAmount: r.toAmount, valueUsd: r.valueUsd, status: r.status, txHash: r.txHash, failReason: r.failReason, quote: r.quote ?? null, createdAt: iso(r.createdAt), updatedAt: iso(r.updatedAt) };
+  }
+  private row(e: TradeExecutionRecord) {
+    return { id: e.id, intentId: e.intentId, agentId: e.agentId, owner: e.owner, provider: e.provider, fromAmount: e.fromAmount, toAmount: e.toAmount, valueUsd: e.valueUsd, status: e.status, txHash: e.txHash, failReason: e.failReason, quote: e.quote ?? undefined, updatedAt: new Date() };
+  }
+  async create(e: TradeExecutionRecord) {
+    await this.db.insert(s.tradeExecutions).values(this.row(e));
+    return e;
+  }
+  async get(id: string) {
+    const [r] = await this.db.select().from(s.tradeExecutions).where(eq(s.tradeExecutions.id, id)).limit(1);
+    return r ? this.map(r) : null;
+  }
+  async update(e: TradeExecutionRecord) {
+    await this.db.update(s.tradeExecutions).set(this.row(e)).where(eq(s.tradeExecutions.id, e.id));
+    return e;
+  }
+  async listByOwner(owner: string, limit = 100) {
+    const rows = await this.db.select().from(s.tradeExecutions).where(eq(s.tradeExecutions.owner, owner)).orderBy(desc(s.tradeExecutions.createdAt)).limit(limit);
+    return rows.map((r) => this.map(r));
+  }
+  async sumValueUsdSince(owner: string, sinceIso: string) {
+    const rows = await this.db.select().from(s.tradeExecutions).where(and(eq(s.tradeExecutions.owner, owner), gte(s.tradeExecutions.createdAt, new Date(sinceIso))));
+    return rows.reduce((sum, r) => sum + (Number(r.valueUsd) || 0), 0);
+  }
+}
+
+class PgAgentTransfers implements AgentTransfersRepository {
+  constructor(private db: DB) {}
+  private map(r: typeof s.agentTransfers.$inferSelect): AgentTransferRecord {
+    return { id: r.id, fromAgentId: r.fromAgentId, toPublicKey: r.toPublicKey, assetId: r.assetId, amount: r.amount, operationId: r.operationId, status: r.status, createdAt: iso(r.createdAt) };
+  }
+  async create(t: AgentTransferRecord) {
+    await this.db.insert(s.agentTransfers).values({ id: t.id, fromAgentId: t.fromAgentId, toPublicKey: t.toPublicKey, assetId: t.assetId, amount: t.amount, operationId: t.operationId, status: t.status });
+    return t;
+  }
+  async update(t: AgentTransferRecord) {
+    await this.db.update(s.agentTransfers).set({ operationId: t.operationId, status: t.status }).where(eq(s.agentTransfers.id, t.id));
+    return t;
+  }
+  async listByAgent(agentId: string, limit = 100) {
+    const rows = await this.db.select().from(s.agentTransfers).where(eq(s.agentTransfers.fromAgentId, agentId)).orderBy(desc(s.agentTransfers.createdAt)).limit(limit);
+    return rows.map((r) => this.map(r));
+  }
+}
+
+class PgPortfolio implements PortfolioRepository {
+  constructor(private db: DB) {}
+  private map(r: typeof s.portfolioSnapshots.$inferSelect): PortfolioSnapshotRecord {
+    return { id: r.id, owner: r.owner, totalValueUsd: r.totalValueUsd, positions: r.positions, takenAt: iso(r.takenAt) };
+  }
+  async saveSnapshot(snap: PortfolioSnapshotRecord) {
+    await this.db.insert(s.portfolioSnapshots).values({ id: snap.id, owner: snap.owner, totalValueUsd: snap.totalValueUsd, positions: snap.positions });
+  }
+  async latest(owner: string) {
+    const [r] = await this.db.select().from(s.portfolioSnapshots).where(eq(s.portfolioSnapshots.owner, owner)).orderBy(desc(s.portfolioSnapshots.takenAt)).limit(1);
+    return r ? this.map(r) : null;
+  }
+  async history(owner: string, limit = 50) {
+    const rows = await this.db.select().from(s.portfolioSnapshots).where(eq(s.portfolioSnapshots.owner, owner)).orderBy(desc(s.portfolioSnapshots.takenAt)).limit(limit);
+    return rows.map((r) => this.map(r));
+  }
+  async getTarget(owner: string) {
+    const [r] = await this.db.select().from(s.targetAllocations).where(eq(s.targetAllocations.owner, owner)).limit(1);
+    return r ? r.allocations : null;
+  }
+  async setTarget(owner: string, allocations: Record<string, number>) {
+    await this.db
+      .insert(s.targetAllocations)
+      .values({ owner, allocations, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: s.targetAllocations.owner, set: { allocations, updatedAt: new Date() } });
+  }
+}
+
+class PgAgentMemory implements AgentMemoryRepository {
+  constructor(private db: DB) {}
+  private map(r: typeof s.agentMemory.$inferSelect): AgentMemoryRecord {
+    return { id: r.id, owner: r.owner, agentId: r.agentId, memoryType: r.memoryType as MemoryType, content: r.content, asset: r.asset, importance: r.importance, metadata: r.metadata ?? null, createdAt: iso(r.createdAt) };
+  }
+  async create(m: AgentMemoryRecord, embedding?: number[] | null) {
+    await this.db.insert(s.agentMemory).values({ id: m.id, owner: m.owner, agentId: m.agentId, memoryType: m.memoryType, content: m.content, asset: m.asset, importance: m.importance, embedding: embedding ?? undefined, metadata: m.metadata ?? undefined });
+    return m;
+  }
+  async recall(owner: string, opts?: { types?: MemoryType[]; limit?: number }) {
+    const where = opts?.types?.length
+      ? and(eq(s.agentMemory.owner, owner), inArray(s.agentMemory.memoryType, opts.types))
+      : eq(s.agentMemory.owner, owner);
+    const rows = await this.db
+      .select()
+      .from(s.agentMemory)
+      .where(where)
+      .orderBy(desc(s.agentMemory.importance), desc(s.agentMemory.createdAt))
+      .limit(opts?.limit ?? 20);
+    return rows.map((r) => this.map(r));
+  }
+  async recallSimilar(owner: string, embedding: number[], opts?: { types?: MemoryType[]; limit?: number }) {
+    const filters = [eq(s.agentMemory.owner, owner), isNotNull(s.agentMemory.embedding)];
+    if (opts?.types?.length) filters.push(inArray(s.agentMemory.memoryType, opts.types));
+    const rows = await this.db
+      .select()
+      .from(s.agentMemory)
+      .where(and(...filters))
+      .orderBy(cosineDistance(s.agentMemory.embedding, embedding))
+      .limit(opts?.limit ?? 8);
+    return rows.map((r) => this.map(r));
+  }
+  async count(owner: string) {
+    const rows = await this.db.select({ id: s.agentMemory.id }).from(s.agentMemory).where(eq(s.agentMemory.owner, owner));
+    return rows.length;
+  }
+  async delete(id: string) {
+    await this.db.delete(s.agentMemory).where(eq(s.agentMemory.id, id));
+  }
+  async clear(owner: string) {
+    await this.db.delete(s.agentMemory).where(eq(s.agentMemory.owner, owner));
+  }
+}
+
 export function createPostgresRepositories(db: DB, enc: NoteEncryptionService): Repositories {
   return {
     notes: new PgNotes(db, enc),
@@ -326,5 +532,11 @@ export function createPostgresRepositories(db: DB, enc: NoteEncryptionService): 
     nullifiers: new PgNullifiers(db),
     events: new PgEvents(db),
     idempotency: new PgIdempotency(db),
+    agents: new PgAgents(db),
+    tradeIntents: new PgTradeIntents(db),
+    tradeExecutions: new PgTradeExecutions(db),
+    agentTransfers: new PgAgentTransfers(db),
+    portfolio: new PgPortfolio(db),
+    memory: new PgAgentMemory(db),
   };
 }
