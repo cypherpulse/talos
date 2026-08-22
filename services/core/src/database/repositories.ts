@@ -81,6 +81,142 @@ export interface IdempotencyRepository {
   put(key: string, operationId: string): Promise<void>;
 }
 
+// ---------------------------------------------------------------------------
+// Phase 6 — multi-agent trading records + repositories.
+// ---------------------------------------------------------------------------
+
+export type AgentRole = "RESEARCH" | "TRADER" | "PORTFOLIO";
+
+/** Public agent projection — NEVER includes key material. */
+export interface AgentRecord {
+  id: string;
+  owner: string;
+  role: AgentRole;
+  name: string;
+  walletAddress: string;
+  talosPublicKey: string;
+  status: "ACTIVE" | "DISABLED";
+  createdAt: string;
+}
+
+/** Storage shape: adds the encrypted key blobs (persisted, never returned by APIs). */
+export interface StoredAgent extends AgentRecord {
+  walletKeyBlob: string;
+  spendingKeyBlob: string;
+}
+
+export interface AgentsRepository {
+  create(agent: StoredAgent): Promise<AgentRecord>;
+  get(id: string): Promise<AgentRecord | null>;
+  getByOwnerRole(owner: string, role: AgentRole): Promise<AgentRecord | null>;
+  listByOwner(owner: string): Promise<AgentRecord[]>;
+  /** Encrypted blobs for the signer/identity service only. */
+  getSecretBlobs(id: string): Promise<{ walletKeyBlob: string; spendingKeyBlob: string } | null>;
+  setStatus(id: string, status: "ACTIVE" | "DISABLED"): Promise<void>;
+}
+
+export interface TradeIntentRecord {
+  id: string;
+  agentId: string;
+  owner: string;
+  assetIn: string;
+  assetOut: string;
+  amount: string;
+  maxSlippageBps: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface TradeIntentsRepository {
+  create(intent: TradeIntentRecord): Promise<TradeIntentRecord>;
+  get(id: string): Promise<TradeIntentRecord | null>;
+  listByOwner(owner: string, limit?: number): Promise<TradeIntentRecord[]>;
+}
+
+export interface TradeExecutionRecord {
+  id: string;
+  intentId: string;
+  agentId: string;
+  owner: string;
+  provider: string;
+  fromAmount: string;
+  toAmount: string;
+  valueUsd: string;
+  status: string;
+  txHash: string | null;
+  failReason: string | null;
+  quote: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TradeExecutionsRepository {
+  create(exec: TradeExecutionRecord): Promise<TradeExecutionRecord>;
+  get(id: string): Promise<TradeExecutionRecord | null>;
+  update(exec: TradeExecutionRecord): Promise<TradeExecutionRecord>;
+  listByOwner(owner: string, limit?: number): Promise<TradeExecutionRecord[]>;
+  /** Sum of valueUsd for an owner since an ISO timestamp (for daily limits). */
+  sumValueUsdSince(owner: string, sinceIso: string): Promise<number>;
+}
+
+export interface AgentTransferRecord {
+  id: string;
+  fromAgentId: string;
+  toPublicKey: string;
+  assetId: number;
+  amount: string;
+  operationId: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export interface AgentTransfersRepository {
+  create(transfer: AgentTransferRecord): Promise<AgentTransferRecord>;
+  update(transfer: AgentTransferRecord): Promise<AgentTransferRecord>;
+  listByAgent(agentId: string, limit?: number): Promise<AgentTransferRecord[]>;
+}
+
+export interface PortfolioSnapshotRecord {
+  id: string;
+  owner: string;
+  totalValueUsd: string;
+  positions: unknown[];
+  takenAt: string;
+}
+
+export interface PortfolioRepository {
+  saveSnapshot(snapshot: PortfolioSnapshotRecord): Promise<void>;
+  latest(owner: string): Promise<PortfolioSnapshotRecord | null>;
+  history(owner: string, limit?: number): Promise<PortfolioSnapshotRecord[]>;
+  getTarget(owner: string): Promise<Record<string, number> | null>;
+  setTarget(owner: string, allocations: Record<string, number>): Promise<void>;
+}
+
+export type MemoryType = "WORKING" | "SEMANTIC" | "EPISODIC";
+
+export interface AgentMemoryRecord {
+  id: string;
+  owner: string;
+  agentId: string | null;
+  memoryType: MemoryType;
+  content: string;
+  asset: string | null;
+  importance: number;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AgentMemoryRepository {
+  create(memory: AgentMemoryRecord, embedding?: number[] | null): Promise<AgentMemoryRecord>;
+  /** Rank by importance then recency; optionally filter by types. */
+  recall(owner: string, opts?: { types?: MemoryType[]; limit?: number }): Promise<AgentMemoryRecord[]>;
+  /** pgvector cosine-similarity search against a query embedding. */
+  recallSimilar(owner: string, embedding: number[], opts?: { types?: MemoryType[]; limit?: number }): Promise<AgentMemoryRecord[]>;
+  count(owner: string): Promise<number>;
+  delete(id: string): Promise<void>;
+  clear(owner: string): Promise<void>;
+}
+
 export interface Repositories {
   notes: NotesRepository;
   operations: OperationsRepository;
@@ -90,4 +226,11 @@ export interface Repositories {
   nullifiers: NullifiersRepository;
   events: EventsRepository;
   idempotency: IdempotencyRepository;
+  // Phase 6
+  agents: AgentsRepository;
+  tradeIntents: TradeIntentsRepository;
+  tradeExecutions: TradeExecutionsRepository;
+  agentTransfers: AgentTransfersRepository;
+  portfolio: PortfolioRepository;
+  memory: AgentMemoryRepository;
 }
