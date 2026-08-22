@@ -2,9 +2,11 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
   ArrowUpRight,
+  Boxes,
   BrainCircuit,
   Coins,
   GitMerge,
+  KeyRound,
   LayoutDashboard,
   Menu,
   Send,
@@ -22,7 +24,12 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string }>; exact: boolean };
 const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
-  { items: [{ to: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true }] },
+  {
+    items: [
+      { to: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
+      { to: "/app/notes", label: "Notes", icon: Boxes, exact: false },
+    ],
+  },
   {
     label: "Operations",
     items: [
@@ -39,6 +46,10 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
       { to: "/app/agent", label: "AI Agent", icon: BrainCircuit, exact: false },
       { to: "/app/activity", label: "Activity", icon: Activity, exact: false },
     ],
+  },
+  {
+    label: "Account",
+    items: [{ to: "/app/profile", label: "Profile", icon: KeyRound, exact: false }],
   },
 ];
 
