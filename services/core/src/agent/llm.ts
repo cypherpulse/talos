@@ -120,10 +120,72 @@ export class AnthropicProvider implements LLMProvider {
   }
 }
 
+/**
+ * Real OpenAI Chat Completions provider (used when LLM_PROVIDER=openai). Uses native
+ * function/tool calling; tool results from previous steps are surfaced back to the model
+ * so it can chain calls autonomously (e.g. getNotes → split the right note). It can only
+ * ever call the known Talos tools — it never gets raw RPC or key access.
+ */
+export class OpenAIProvider implements LLMProvider {
+  readonly name = "openai";
+  constructor(
+    private readonly apiKey: string,
+    private readonly model: string,
+    private readonly baseUrl = "https://api.openai.com/v1",
+  ) {}
+
+  async generate(system: string, messages: LLMMessage[], tools: ToolSchema[]): Promise<LLMResponse> {
+    const oa: Array<{ role: string; content: string }> = [{ role: "system", content: system }];
+    for (const m of messages) {
+      if (m.role === "tool") oa.push({ role: "user", content: `Result of ${m.toolName ?? "tool"}: ${m.content}` });
+      else oa.push({ role: m.role, content: m.content });
+    }
+    const body = {
+      model: this.model,
+      messages: oa,
+      tools: tools.map((t) => ({
+        type: "function",
+        function: { name: t.name, description: t.description, parameters: t.parameters },
+      })),
+      tool_choice: "auto",
+    };
+    const res = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      throw new Error(`OpenAI API error ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    }
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string; tool_calls?: Array<{ function?: { name?: string; arguments?: string } }> } }>;
+    };
+    const msg = data.choices?.[0]?.message;
+    const call = msg?.tool_calls?.[0]?.function;
+    if (call?.name) {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(call.arguments || "{}");
+      } catch {
+        /* malformed args → empty */
+      }
+      return { toolCall: { name: call.name, arguments: args } };
+    }
+    return { text: msg?.content ?? "" };
+  }
+}
+
 export function createLLMProvider(env: NodeJS.ProcessEnv = process.env): LLMProvider {
-  const provider = (env.LLM_PROVIDER ?? "rule-based").toLowerCase();
-  if (provider === "anthropic" && env.LLM_API_KEY) {
-    return new AnthropicProvider(env.LLM_API_KEY, env.LLM_MODEL ?? "claude-sonnet-5");
+  const provider = (env.LLM_PROVIDER ?? "").toLowerCase();
+  const openaiKey = env.OPENAI_API_KEY ?? (provider === "openai" ? env.LLM_API_KEY : undefined);
+  const anthropicKey = env.ANTHROPIC_API_KEY ?? (provider === "anthropic" ? env.LLM_API_KEY : undefined);
+
+  // Explicit selection, else auto-detect from whichever key is present.
+  if ((provider === "openai" || (!provider && openaiKey)) && openaiKey) {
+    return new OpenAIProvider(openaiKey, env.LLM_MODEL ?? env.OPENAI_MODEL ?? "gpt-4o-mini");
+  }
+  if ((provider === "anthropic" || (!provider && anthropicKey)) && anthropicKey) {
+    return new AnthropicProvider(anthropicKey, env.LLM_MODEL ?? "claude-sonnet-5");
   }
   return new RuleBasedProvider();
 }
