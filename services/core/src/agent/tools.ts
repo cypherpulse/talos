@@ -15,6 +15,8 @@ export interface ToolContext {
   core: CoreClient;
   guard: TalosGuard;
   logger: Logger;
+  /** Connected wallet address the agent acts for (per-user scoping). */
+  owner?: string;
 }
 
 const TERMINAL = ["FINALIZED", "FAILED", "REJECTED", "CANCELLED", "EXPIRED"];
@@ -63,8 +65,19 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   async getMerkleRoot(_args, ctx) {
     return ctx.core.getMerkleRoot();
   },
-  async deposit(args, ctx) {
-    return executeMutation(ctx, "DEPOSIT", { amount: String(args.amount) });
+  async deposit(args, _ctx) {
+    // Deposits are non-custodial: the user signs and funds them from their own wallet, so
+    // the agent cannot execute a deposit server-side. It returns an action the UI turns
+    // into a wallet prompt (a "Sign & shield" button), then the user completes it.
+    const amount = String(args.amount ?? "").trim();
+    const assetId = args.assetId ? Number(args.assetId) : 1;
+    if (!amount) return { error: "amount is required to shield" };
+    return {
+      actionRequired: "SHIELD",
+      assetId,
+      amount,
+      message: `Shielding ${amount} is non-custodial — you sign and fund it from your wallet. Click "Sign & shield" to approve in your wallet.`,
+    };
   },
   async split(args, ctx) {
     const a1 = BigInt(String(args.amount1));
@@ -111,7 +124,7 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
   { name: "getNotes", description: "List the agent's private notes (public fields only).", parameters: { type: "object", properties: {} } },
   { name: "getBalance", description: "Sum of available private note values.", parameters: { type: "object", properties: {} } },
   { name: "getMerkleRoot", description: "Current on-chain Merkle root.", parameters: { type: "object", properties: {} } },
-  { name: "deposit", description: "Deposit the test asset and create a private note.", parameters: { type: "object", properties: { amount: { type: "string" } }, required: ["amount"] } },
+  { name: "deposit", description: "Shield an asset into a private note. Non-custodial: this returns an action the user completes by signing in their wallet. `amount` is in whole tokens (e.g. \"3\" for 3 USDC); `assetId` is 1=USDC, 2=USDT, 3=USDG, 4=OKB (default 1).", parameters: { type: "object", properties: { amount: { type: "string" }, assetId: { type: "number" } }, required: ["amount"] } },
   { name: "split", description: "Split a private note into two amounts.", parameters: { type: "object", properties: { amount1: { type: "string" }, amount2: { type: "string" } }, required: ["amount1", "amount2"] } },
   { name: "merge", description: "Merge two private notes into one.", parameters: { type: "object", properties: {} } },
   { name: "transfer", description: "Privately transfer an amount to a recipient owner public key.", parameters: { type: "object", properties: { amount: { type: "string" }, recipientOwnerPubKey: { type: "string" } }, required: ["amount", "recipientOwnerPubKey"] } },
