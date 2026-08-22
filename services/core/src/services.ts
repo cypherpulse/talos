@@ -13,6 +13,7 @@ import { MerkleSynchronizer } from "./merkle/synchronizer.js";
 import { ExecutionEngine } from "./execution/engine.js";
 import { InlineDispatcher, type OperationDispatcher } from "./execution/dispatcher.js";
 import { InMemoryLockService, type LockService } from "./execution/locks.js";
+import { AgentsService } from "./agents/service.js";
 
 /** Everything the API and workers need, wired from config + repositories. */
 export interface Services {
@@ -29,6 +30,7 @@ export interface Services {
   engine: ExecutionEngine;
   dispatcher: OperationDispatcher;
   locks: LockService;
+  agents: AgentsService;
 }
 
 export interface BuildOptions {
@@ -68,5 +70,15 @@ export function buildServices(opts: BuildOptions): Services {
   const engine = new ExecutionEngine({ repos, notes, proofs, contract, chain, txManager, merkle, locks, logger });
   const dispatcher = (opts.dispatcherFactory ?? ((e, l) => new InlineDispatcher(e, l)))(engine, logger);
 
-  return { config, logger, repos, chain, contract, proofs, notes, encryption, merkle, txManager, engine, dispatcher, locks };
+  const agents = new AgentsService({
+    repos,
+    engine,
+    dispatcher,
+    notes,
+    encryption,
+    chain: { id: config.chain.chainId, rpcUrl: config.chain.rpcUrl },
+    logger,
+  });
+
+  return { config, logger, repos, chain, contract, proofs, notes, encryption, merkle, txManager, engine, dispatcher, locks, agents };
 }
