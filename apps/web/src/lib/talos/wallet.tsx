@@ -95,10 +95,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }
 
+const DISCONNECTED: WalletState = {
+  address: null,
+  chainId: null,
+  available: false,
+  connecting: false,
+  error: null,
+  connect: async () => {},
+  disconnect: () => {},
+};
+
 export function useWallet(): WalletState {
   const ctx = useContext(WalletContext);
-  if (!ctx) throw new Error("useWallet must be used within WalletProvider");
-  return ctx;
+  // Degrade gracefully (disconnected) instead of throwing if rendered outside the
+  // provider (e.g. an error-boundary fallback or SSR shell) — never crash the shell.
+  return ctx ?? DISCONNECTED;
 }
 
 export const EXPECTED_CHAIN_ID = CHAIN_ID;
