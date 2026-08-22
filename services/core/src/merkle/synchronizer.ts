@@ -49,13 +49,14 @@ export class MerkleSynchronizer {
    */
   private async scanEvents(
     eventName: "CommitmentInserted" | "NullifierSpent",
+    fromBlock: bigint,
     head: bigint,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<any[]> {
     const WINDOW = 100n; // window span; range (to - from) stays below the 100-block cap
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const logs: any[] = [];
-    for (let from = this.fromBlock; from <= head; from += WINDOW) {
+    for (let from = fromBlock; from <= head; from += WINDOW) {
       const to = from + WINDOW - 1n < head ? from + WINDOW - 1n : head;
       const batch = await this.chain.publicClient.getContractEvents({
         address: this.poolAddress,
@@ -80,13 +81,21 @@ export class MerkleSynchronizer {
   async sync(): Promise<{ inserted: number; nullified: number }> {
     let inserted = 0;
     let nullified = 0;
+    // Resume from the last processed block (with a small reorg overlap) instead of
+    // rescanning the whole history each call — otherwise every operation re-fetches
+    // thousands of blocks in 100-block windows and stalls. The first run (checkpoint 0)
+    // still catches up from the deployment block once.
+    const REORG_OVERLAP = 20n;
+    const checkpoint = BigInt(await this.events.getLastProcessedBlock());
+    const scanFrom = checkpoint > this.fromBlock + REORG_OVERLAP ? checkpoint - REORG_OVERLAP : this.fromBlock;
+
     // Retry until the mirror's computed root matches the authoritative on-chain root.
     // The events are already on-chain (the tx confirmed), so this converges quickly;
     // it just absorbs RPC log-propagation lag deterministically.
     for (let attempt = 0; attempt < 15; attempt++) {
       const head = await this.chain.getBlockNumber();
-      const inserts = await this.scanEvents("CommitmentInserted", head);
-      const spends = await this.scanEvents("NullifierSpent", head);
+      const inserts = await this.scanEvents("CommitmentInserted", scanFrom, head);
+      const spends = await this.scanEvents("NullifierSpent", scanFrom, head);
 
       const ordered = [...inserts].sort((a, b) => Number((a.args.leafIndex ?? 0n) - (b.args.leafIndex ?? 0n)));
       for (const log of ordered) {
