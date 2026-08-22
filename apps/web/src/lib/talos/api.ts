@@ -120,6 +120,8 @@ export const talosApi = {
   transaction: (id: string) => request<TransactionRecord>(`/api/v1/transactions/${id}`),
 
   assets: () => request<AssetsResponse>("/api/v1/assets"),
+  generateKey: () =>
+    request<{ spendingKey: string; ownerPublicKey: string }>("/api/v1/keys/generate", { method: "POST" }),
 
   deposit: (body: { amount: string; assetId?: number }, key?: string) =>
     request<OperationAck>("/api/v1/deposits", { method: "POST", body, idempotencyKey: key }),
@@ -148,7 +150,7 @@ export const talosApi = {
     request<GuardResult>(`/guard/operations/${id}/approve`, { method: "POST" }),
   guardOperation: (id: string) => request<OperationView>(`/guard/operations/${id}`),
 
-  agentMessage: (body: { message: string }) =>
+  agentMessage: (body: { message: string; owner?: string }) =>
     request<AgentMessageResponse>("/agent/message", { method: "POST", body }),
 };
 
