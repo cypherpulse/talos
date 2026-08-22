@@ -1,11 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Ban, BrainCircuit, CornerDownLeft, Loader2, ShieldCheck, User } from "lucide-react";
+import { Ban, BrainCircuit, CheckCircle2, Coins, CornerDownLeft, Loader2, ShieldCheck, User } from "lucide-react";
 import { useState } from "react";
 
-import { talosApi, errorMessage } from "@/lib/talos/api";
+import { talosApi, errorMessage, newIdempotencyKey } from "@/lib/talos/api";
 import { useGuardIdentity } from "@/lib/talos/hooks";
+import { useWallet } from "@/lib/talos/wallet";
+import { assetById, formatAssetAmount, useAssets } from "@/lib/talos/assets";
+import {
+  encodeApprove,
+  encodeDeposit,
+  ensureChain,
+  getInjected,
+  readAllowance,
+  sendTx,
+  waitForTx,
+} from "@/lib/talos/evm";
+import { parseUnits } from "@/lib/talos/format";
 import type { AgentMessageResponse, AgentStep } from "@/lib/talos/types";
+import { AssetLogo } from "@/components/talos/asset-logo";
 import { HashChip, SectionLabel, StatusPill } from "@/components/talos/primitives";
 import { GlassCard, PageHeader, TextInput } from "@/components/talos/ui";
 import { cn } from "@/lib/utils";
@@ -30,9 +43,11 @@ function AgentPage() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const guard = useGuardIdentity();
   const queryClient = useQueryClient();
+  const { address } = useWallet();
 
   const mutation = useMutation({
-    mutationFn: (message: string) => talosApi.agentMessage({ message }),
+    mutationFn: (message: string) =>
+      talosApi.agentMessage({ message, ...(address ? { owner: address } : {}) }),
     onSuccess: (data) => {
       setTurns((t) => [...t, { role: "agent", data }]);
       void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
@@ -145,6 +160,8 @@ function TurnView({ turn }: { turn: Turn }) {
 
   const { reply, steps } = turn.data;
   const rejected = steps.find((s) => s.result?.decision === "REJECTED");
+  const shield = steps.find((s) => s.result?.actionRequired === "SHIELD");
+  const approval = steps.find((s) => s.result?.decision === "APPROVAL_REQUIRED");
 
   return (
     <div className="flex items-start gap-2.5">
@@ -164,7 +181,151 @@ function TurnView({ turn }: { turn: Turn }) {
             transaction created.
           </div>
         ) : null}
+
+        {shield ? (
+          <ShieldAction
+            assetId={Number(shield.result.assetId ?? 1)}
+            amount={String(shield.result.amount ?? "")}
+          />
+        ) : null}
+
+        {approval?.result.guardOperationId ? (
+          <ApproveAction guardOperationId={String(approval.result.guardOperationId)} />
+        ) : null}
       </div>
+    </div>
+  );
+}
+
+/** Non-custodial shield the agent proposed — the user signs + funds it in their wallet. */
+function ShieldAction({ assetId, amount }: { assetId: number; amount: string }) {
+  const { assets } = useAssets();
+  const { address } = useWallet();
+  const asset = assetById(assets, assetId);
+  const queryClient = useQueryClient();
+  const [step, setStep] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const base = parseUnits(amount, asset.decimals);
+
+  const run = async () => {
+    setError(null);
+    const provider = getInjected();
+    if (!provider || !address) {
+      setError("Connect your wallet first (top-right).");
+      return;
+    }
+    if (base === null) {
+      setError(`Invalid amount: ${amount}`);
+      return;
+    }
+    try {
+      setStep("Preparing note…");
+      const prep = await talosApi.depositPrepare({ assetId, amount: base, owner: address }, newIdempotencyKey());
+      await ensureChain(provider);
+      if (!asset.isNative) {
+        setStep("Checking allowance…");
+        const allowance = await readAllowance(asset.address, address, prep.poolAddress);
+        if (allowance < BigInt(base)) {
+          setStep("Approve the token in your wallet…");
+          await waitForTx(
+            await sendTx(provider, {
+              from: address,
+              to: asset.address,
+              data: encodeApprove(prep.poolAddress, (1n << 256n) - 1n),
+            }),
+          );
+        }
+      }
+      setStep("Confirm the deposit in your wallet…");
+      const txHash = await sendTx(provider, {
+        from: address,
+        to: prep.poolAddress,
+        data: encodeDeposit(BigInt(assetId), BigInt(base), BigInt(prep.commitment)),
+        value: asset.isNative ? BigInt(base) : 0n,
+      });
+      setStep("Finalizing on Talos…");
+      await talosApi.depositConfirm(prep.operationId, txHash);
+      void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
+      setDone(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Shield failed");
+    } finally {
+      setStep(null);
+    }
+  };
+
+  if (done)
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary-soft px-3 py-2 text-xs text-primary">
+        <CheckCircle2 className="size-3.5" /> Shielded {amount} {asset.symbol} into a private note.
+      </div>
+    );
+
+  return (
+    <div className="rounded-xl border border-primary/25 bg-primary-soft/50 px-3 py-3">
+      <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+        <AssetLogo asset={asset} size={18} /> Sign to shield{" "}
+        <span className="font-semibold text-foreground">
+          {amount} {asset.symbol}
+        </span>{" "}
+        from your wallet (non-custodial).
+      </div>
+      <button
+        type="button"
+        onClick={() => void run()}
+        disabled={step !== null}
+        className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-strong disabled:opacity-50"
+      >
+        {step ? <Loader2 className="size-3.5 animate-spin" /> : <Coins className="size-3.5" />}
+        {step ?? `Sign & shield ${amount} ${asset.symbol}`}
+      </button>
+      {error ? <p className="mono mt-2 text-xs text-destructive">{error}</p> : null}
+    </div>
+  );
+}
+
+/** Guard flagged the action as needing human approval — one click to authorize. */
+function ApproveAction({ guardOperationId }: { guardOperationId: string }) {
+  const queryClient = useQueryClient();
+  const [state, setState] = useState<"idle" | "pending" | "done" | "error">("idle");
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const approve = async () => {
+    setState("pending");
+    try {
+      const r = await talosApi.guardApprove(guardOperationId);
+      setMsg(`Approved · ${r.decision}`);
+      setState("done");
+      void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
+    } catch (e) {
+      setMsg(errorMessage(e));
+      setState("error");
+    }
+  };
+
+  if (state === "done")
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary-soft px-3 py-2 text-xs text-primary">
+        <CheckCircle2 className="size-3.5" /> {msg}
+      </div>
+    );
+
+  return (
+    <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-3">
+      <p className="mb-2 text-xs text-muted-foreground">
+        This action exceeds an auto-approve limit and needs your approval.
+      </p>
+      <button
+        type="button"
+        onClick={() => void approve()}
+        disabled={state === "pending"}
+        className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-strong disabled:opacity-50"
+      >
+        {state === "pending" ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />}
+        Approve & continue
+      </button>
+      {state === "error" ? <p className="mono mt-2 text-xs text-destructive">{msg}</p> : null}
     </div>
   );
 }
