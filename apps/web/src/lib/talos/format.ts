@@ -4,8 +4,8 @@ export const ASSET_DECIMALS = 6;
 export const ASSET_SYMBOL = "TEST_USDC";
 export const MAX_VALUE = (1n << 128n) - 1n;
 
-/** Format an integer base-unit string into human units. */
-export function formatUnits(base: string | bigint, decimals = ASSET_DECIMALS): string {
+/** Format an integer base-unit string into human units. `maxDecimals` caps the fraction. */
+export function formatUnits(base: string | bigint, decimals = ASSET_DECIMALS, maxDecimals?: number): string {
   let v: bigint;
   try {
     v = typeof base === "bigint" ? base : BigInt(base || "0");
@@ -16,7 +16,9 @@ export function formatUnits(base: string | bigint, decimals = ASSET_DECIMALS): s
   if (neg) v = -v;
   const d = 10n ** BigInt(decimals);
   const whole = v / d;
-  const frac = (v % d).toString().padStart(decimals, "0").replace(/0+$/, "");
+  let frac = (v % d).toString().padStart(decimals, "0");
+  if (maxDecimals !== undefined) frac = frac.slice(0, maxDecimals); // truncate to N places
+  frac = frac.replace(/0+$/, ""); // trim trailing zeros
   const wholeStr = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return `${neg ? "-" : ""}${wholeStr}${frac ? `.${frac}` : ""}`;
 }

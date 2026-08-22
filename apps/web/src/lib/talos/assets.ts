@@ -45,10 +45,12 @@ export function isUsdStable(asset: Asset): boolean {
   return asset.symbol === "USDC" || asset.symbol === "USDT" || asset.symbol === "USDG";
 }
 
-/** Format a base-unit amount using a specific asset's decimals, `$`-prefixed for USD stables. */
+/** Format a base-unit amount using a specific asset's decimals, `$`-prefixed for USD stables.
+ *  Display is capped to 4 decimal places (2 for stablecoins). */
 export function formatAssetAmount(base: string | bigint, asset: Asset): string {
-  const value = formatUnits(base, asset.decimals);
-  return isUsdStable(asset) ? `$${value}` : value;
+  const stable = isUsdStable(asset);
+  const value = formatUnits(base, asset.decimals, stable ? 2 : 4);
+  return stable ? `$${value}` : value;
 }
 
 /** Format `<amount> <SYMBOL>` for a note using its own asset. */
