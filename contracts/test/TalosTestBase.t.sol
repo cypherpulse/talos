@@ -18,7 +18,7 @@ import {TestPoseidonHasher} from "./mocks/TestPoseidonHasher.sol";
  * @dev Deploys the test-only ERC-20, hasher, and a permissive {MockVerifier} wired
  *      for every operation, so tests can drive the pool's real state machine. The
  *      mock verifier provides NO security — it is a controllable stand-in for the
- *      Phase 3 Groth16 verifier, letting tests exercise both accept and reject paths.
+ *      Phase 3 PLONK verifier, letting tests exercise both accept and reject paths.
  */
 abstract contract TalosTestBase is Test {
     /*//////////////////////////////////////////////////////////////
@@ -58,6 +58,7 @@ abstract contract TalosTestBase is Test {
         pool.setVerifier(TalosTypes.Operation.Split, ITalosVerifier(address(verifier)));
         pool.setVerifier(TalosTypes.Operation.Merge, ITalosVerifier(address(verifier)));
         pool.setVerifier(TalosTypes.Operation.Withdraw, ITalosVerifier(address(verifier)));
+        pool.setVerifier(TalosTypes.Operation.Deposit, ITalosVerifier(address(verifier)));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -70,18 +71,18 @@ abstract contract TalosTestBase is Test {
         return (uint256(keccak256(abi.encode("talos.fe", _seed))) % (TalosTypes.FIELD_SIZE - 1)) + 1;
     }
 
-    /// @dev A syntactically-shaped dummy Groth16 proof (contents ignored by the mock).
+    /// @dev A syntactically-shaped dummy PLONK proof (contents ignored by the mock).
     function _proof() internal pure returns (TalosTypes.Proof memory p) {
-        p.a = [uint256(1), uint256(2)];
-        p.b = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
-        p.c = [uint256(7), uint256(8)];
+        for (uint256 i = 0; i < 24; ++i) {
+            p.data[i] = i + 1;
+        }
     }
 
     /// @dev Mint + approve + deposit `amount` under `commitment`, paid by this test.
     function _deposit(uint256 commitment, uint256 amount) internal {
         token.mint(address(this), amount);
         token.approve(address(pool), amount);
-        pool.deposit(TalosTypes.ASSET_ID, amount, commitment);
+        pool.deposit(_proof(), TalosTypes.ASSET_ID, amount, commitment);
     }
 
     /// @dev Deposit a fresh note of `AMOUNT` and return the resulting known root.
