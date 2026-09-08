@@ -11,6 +11,7 @@ import {ITalosAssetRegistry} from "../src/interfaces/ITalosAssetRegistry.sol";
 import {IHasher} from "../src/interfaces/IHasher.sol";
 import {TalosTypes} from "../src/TalosTypes.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
+import {MockVerifier} from "./mocks/MockVerifier.sol";
 import {DepositVerifier} from "../src/verifiers/DepositVerifier.sol";
 import {TransferVerifier} from "../src/verifiers/TransferVerifier.sol";
 import {SplitVerifier} from "../src/verifiers/SplitVerifier.sol";
@@ -65,6 +66,17 @@ contract TalosE2ETest is Test {
             TalosTypes.Operation.Withdraw,
             ITalosVerifier(address(new TalosVerifier(address(new WithdrawVerifier()), 5)))
         );
+        // Tree-seeding deposits use a permissive Deposit verifier (seeding is not the unit
+        // under test). test_E2E_Deposit swaps in the REAL DepositVerifier + a real proof.
+        pool.setVerifier(
+            TalosTypes.Operation.Deposit, ITalosVerifier(address(new MockVerifier(true)))
+        );
+    }
+
+    /// @dev A zeroed proof for seeding deposits under the permissive Deposit verifier.
+    ///      `p.data` is zero-initialized by default, so nothing to set.
+    function _noProof() internal pure returns (TalosTypes.Proof memory p) {
+        return p;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -89,13 +101,11 @@ contract TalosE2ETest is Test {
     }
 
     function _proof(string memory json) internal pure returns (TalosTypes.Proof memory p) {
-        uint256[] memory a = json.readUintArray(".proof.a");
-        uint256[] memory b0 = json.readUintArray(".proof.b[0]");
-        uint256[] memory b1 = json.readUintArray(".proof.b[1]");
-        uint256[] memory c = json.readUintArray(".proof.c");
-        p.a = [a[0], a[1]];
-        p.b = [[b0[0], b0[1]], [b1[0], b1[1]]];
-        p.c = [c[0], c[1]];
+        uint256[] memory d = json.readUintArray(".proof");
+        require(d.length == 24, "fixture proof must be 24 words");
+        for (uint256 i = 0; i < 24; ++i) {
+            p.data[i] = d[i];
+        }
     }
 
     /// @dev Reproduce the on-chain Merkle state the proof was built against.
@@ -105,7 +115,7 @@ contract TalosE2ETest is Test {
         for (uint256 i = 0; i < commitments.length; i++) {
             token.mint(address(this), amounts[i]);
             token.approve(address(pool), amounts[i]);
-            pool.deposit(TalosTypes.ASSET_ID, amounts[i], commitments[i]);
+            pool.deposit(_noProof(), TalosTypes.ASSET_ID, amounts[i], commitments[i]);
         }
     }
 
@@ -119,20 +129,39 @@ contract TalosE2ETest is Test {
         uint256 amount = json.readUint(".amount");
         uint256 commitment = json.readUint(".commitment");
 
+        // B1: use the REAL generated DepositVerifier — the pool now verifies the binding
+        // proof that (assetId, amount) match the value/asset committed in `commitment`.
+        pool.setVerifier(
+            TalosTypes.Operation.Deposit,
+            ITalosVerifier(address(new TalosVerifier(address(new DepositVerifier()), 3)))
+        );
+
         token.mint(address(this), amount);
         token.approve(address(pool), amount);
-        pool.deposit(assetId, amount, commitment);
+        pool.deposit(_proof(json), assetId, amount, commitment);
 
         assertTrue(pool.commitmentInserted(commitment), "commitment not inserted");
         assertEq(token.balanceOf(address(pool)), amount, "pool not funded");
+    }
 
-        // The deposit proof itself binds commitment to (assetId, amount): verify it
-        // through the generated deposit verifier (the pool's deposit stays proofless).
-        TalosVerifier dv = new TalosVerifier(address(new DepositVerifier()), 3);
-        uint256[] memory pub = json.readUintArray(".publicSignals");
-        assertTrue(
-            dv.verifyProof(_proof(json).a, _proof(json).b, _proof(json).c, pub), "deposit proof"
+    /// @dev B1 negative: a real proof cannot be reused with a mismatched public `amount`
+    ///      (which would let a depositor over-credit). The DepositVerifier rejects it.
+    function test_E2E_Deposit_RejectsAmountMismatch() public {
+        string memory json = _read("deposit");
+        uint256 assetId = json.readUint(".assetId");
+        uint256 amount = json.readUint(".amount");
+        uint256 commitment = json.readUint(".commitment");
+
+        pool.setVerifier(
+            TalosTypes.Operation.Deposit,
+            ITalosVerifier(address(new TalosVerifier(address(new DepositVerifier()), 3)))
         );
+        token.mint(address(this), amount + 1);
+        token.approve(address(pool), amount + 1);
+
+        // Same proof, inflated public amount → signals no longer match the proof.
+        vm.expectRevert(Talos__InvalidProof.selector);
+        pool.deposit(_proof(json), assetId, amount + 1, commitment);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -228,7 +257,7 @@ contract TalosE2ETest is Test {
         string memory json = _read("split");
         _applyDeposits(json);
         TalosTypes.Proof memory p = _proof(json);
-        p.a[0] = p.a[0] ^ 1; // tamper one bit
+        p.data[0] = p.data[0] ^ 1; // tamper one bit
 
         vm.expectRevert(Talos__InvalidProof.selector);
         pool.split(
