@@ -31,8 +31,21 @@ const addr = (a: string): string => pad32(a.replace(/^0x/, ""));
 
 export const encodeApprove = (spender: string, amount: bigint): string =>
   "0x095ea7b3" + addr(spender) + uint(amount);
-export const encodeDeposit = (assetId: bigint, amount: bigint, commitment: bigint): string =>
-  "0x00aeef8a" + uint(assetId) + uint(amount) + uint(commitment);
+
+/** PLONK proof in the pool's Solidity-verifier order (as returned by /deposits/prepare): 24 words. */
+export type SolProof = string[];
+
+/**
+ * Encode `deposit(Proof proof, uint256 assetId, uint256 amount, uint256 commitment)`.
+ * Proof is the flat PLONK `uint256[24]` — a fixed-size tuple, so its 24 words are
+ * head-encoded inline before the three uint256 args.
+ * Selector = deposit((uint256[24]),uint256,uint256,uint256).
+ */
+export function encodeDeposit(proof: SolProof, assetId: bigint, amount: bigint, commitment: bigint): string {
+  if (proof.length !== 24) throw new Error(`PLONK proof must be 24 words, got ${proof.length}`);
+  const proofWords = proof.map((v) => uint(BigInt(v))).join("");
+  return "0x7f6c5081" + proofWords + uint(assetId) + uint(amount) + uint(commitment);
+}
 const encodeBalanceOf = (owner: string): string => "0x70a08231" + addr(owner);
 const encodeAllowance = (owner: string, spender: string): string =>
   "0xdd62ed3e" + addr(owner) + addr(spender);
