@@ -39,9 +39,10 @@ circuits/build/**/*.wtns
 circuits/build/**/witness.wtns
 circuits/build/**/proof.json
 circuits/build/**/public.json
-# Ignore intermediate zkeys but keep the final proving keys (needed at runtime).
+# Ignore all zkey files (do not commit final proving keys here).
+# If you need final proving keys for runtime, store them in a release asset
+# or use Git LFS; do NOT keep large final `.zkey` files in the repo history.
 circuits/build/**/*.zkey
-!circuits/build/**/*_final.zkey
 # NEVER commit witness input files — they contain private note secrets.
 **/*.witness.json
 **/inputs/*.json
