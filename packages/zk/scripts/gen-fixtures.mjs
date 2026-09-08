@@ -1,4 +1,4 @@
-// Generate real Groth16 proof fixtures for the Solidity end-to-end tests.
+// Generate real PLONK proof fixtures for the Solidity end-to-end tests.
 //
 // For each scenario we build the note(s), reproduce the on-chain Merkle state, prove
 // the circuit, verify with snarkjs, and write a PUBLIC-ONLY fixture (proof + public
@@ -38,12 +38,14 @@ const SK_B = 2002n;
 const RECIPIENT = "0x000000000000000000000000000000000000B0B1";
 
 async function prove(name, input) {
-  const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, wasm(name), zkey(name));
-  const ok = await snarkjs.groth16.verify(vkeyOf(name), publicSignals, proof);
+  const { proof, publicSignals } = await snarkjs.plonk.fullProve(input, wasm(name), zkey(name));
+  const ok = await snarkjs.plonk.verify(vkeyOf(name), publicSignals, proof);
   if (!ok) throw new Error(`${name}: snarkjs verification FAILED`);
-  const calldata = await snarkjs.groth16.exportSolidityCallData(proof, publicSignals);
-  const [a, b, c, pub] = JSON.parse(`[${calldata}]`);
-  return { a, b, c, pub, publicSignals, ok };
+  const calldata = await snarkjs.plonk.exportSolidityCallData(proof, publicSignals);
+  // PLONK exportSolidityCallData emits two adjacent arrays "[..24..][..N..]" with no
+  // separating comma; splice one in so it parses as [proof, publicSignals].
+  const [pr, pub] = JSON.parse("[" + calldata.replace(/\]\s*\[/, "],[") + "]");
+  return { proof: pr, pub, publicSignals, ok };
 }
 
 function writeFixture(name, obj) {
@@ -77,7 +79,7 @@ async function main() {
       assetId: H(ASSET_ID),
       amount: H(note.value),
       commitment: H(commitment),
-      proof: { a: r.a, b: r.b, c: r.c },
+      proof: r.proof,
       publicSignals: pubHex(r.publicSignals),
     });
   }
@@ -120,7 +122,7 @@ async function main() {
       nullifier: H(nullifier),
       outCommitment1: H(out1),
       outCommitment2: H(out2),
-      proof: { a: r.a, b: r.b, c: r.c },
+      proof: r.proof,
       publicSignals: pubHex(r.publicSignals),
     });
   }
@@ -172,7 +174,7 @@ async function main() {
       nullifier1: H(n1),
       nullifier2: H(n2),
       outCommitment: H(outC),
-      proof: { a: r.a, b: r.b, c: r.c },
+      proof: r.proof,
       publicSignals: pubHex(r.publicSignals),
     });
   }
@@ -218,7 +220,7 @@ async function main() {
       nullifier: H(nullifier),
       outCommitment1: H(out1),
       outCommitment2: H(out2),
-      proof: { a: r.a, b: r.b, c: r.c },
+      proof: r.proof,
       publicSignals: pubHex(r.publicSignals),
     });
   }
@@ -255,7 +257,7 @@ async function main() {
       amount: H(100n),
       recipient: RECIPIENT,
       assetId: H(ASSET_ID),
-      proof: { a: r.a, b: r.b, c: r.c },
+      proof: r.proof,
       publicSignals: pubHex(r.publicSignals),
     });
   }
