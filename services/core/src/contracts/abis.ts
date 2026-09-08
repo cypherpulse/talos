@@ -7,8 +7,8 @@ import { parseAbi } from "viem";
  */
 
 export const talosPoolAbi = parseAbi([
-  "struct Proof { uint256[2] a; uint256[2][2] b; uint256[2] c; }",
-  "function deposit(uint256 assetId, uint256 amount, uint256 commitment)",
+  "struct Proof { uint256[24] data; }",
+  "function deposit(Proof proof, uint256 assetId, uint256 amount, uint256 commitment) payable",
   "function transfer(Proof proof, uint256 root, uint256 nullifier, uint256 outputCommitment1, uint256 outputCommitment2)",
   "function split(Proof proof, uint256 root, uint256 nullifier, uint256 outputCommitment1, uint256 outputCommitment2)",
   "function merge(Proof proof, uint256 root, uint256 nullifier1, uint256 nullifier2, uint256 outputCommitment)",
