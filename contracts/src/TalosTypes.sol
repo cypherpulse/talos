@@ -55,22 +55,25 @@ library TalosTypes {
                              TYPE DECLARATIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The private, MVP-shaped operations that consume/produce notes.
-    /// @dev Deposit is public and needs no proof in Phase 2, so it is not listed.
+    /// @notice The proof-verified protocol operations.
+    /// @dev Deposit is appended last so the existing verifier indices (Transfer=0 …
+    ///      Withdraw=3) are unchanged. Deposit=4 carries a binding proof that the public
+    ///      `amount`/`assetId` match the value/asset committed in the note (see §B1 of the
+    ///      production gap analysis) — closing the proofless-deposit value-conservation hole.
     enum Operation {
         Transfer, // 1 note  -> 2 notes
         Split, //    1 note  -> 2 notes
         Merge, //    2 notes -> 1 note
-        Withdraw //  1 note  -> public recipient
+        Withdraw, // 1 note  -> public recipient
+        Deposit //   public asset -> 1 note (binding proof)
     }
 
-    /// @notice A Groth16 proof in the encoding snarkjs' Solidity verifier expects.
-    /// @dev The concrete verifier is generated in Phase 3; freezing this shape keeps
-    ///      the pool's calldata layout stable when the real verifier is wired in.
+    /// @notice A PLONK proof in the encoding snarkjs' Solidity verifier expects.
+    /// @dev snarkjs' PLONK verifier takes the proof as a flat `uint256[24]` (9 group
+    ///      elements = 18 words + 6 field evaluations). The universal PLONK setup uses
+    ///      the Perpetual Powers of Tau SRS — no per-circuit trusted-setup ceremony.
     struct Proof {
-        uint256[2] a;
-        uint256[2][2] b;
-        uint256[2] c;
+        uint256[24] data;
     }
 
     /// @notice The canonical private note. NEVER stored on-chain — only its
