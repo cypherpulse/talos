@@ -97,20 +97,20 @@ contract TalosAssetRegistryTest is TalosTestBase {
 
     function test_Deposit_RevertsOnUnregisteredAsset() public {
         vm.expectRevert(Talos__InvalidAsset.selector);
-        pool.deposit(99, AMOUNT, _fe());
+        pool.deposit(_proof(), 99, AMOUNT, _fe());
     }
 
     function test_Erc20Deposit_RejectsNativeValue() public {
         token.mint(address(this), AMOUNT);
         token.approve(address(pool), AMOUNT);
         vm.expectRevert(Talos__InvalidAmount.selector);
-        pool.deposit{value: 1}(TalosTypes.ASSET_ID, AMOUNT, _fe());
+        pool.deposit{value: 1}(_proof(), TalosTypes.ASSET_ID, AMOUNT, _fe());
     }
 
     function test_NativeDeposit_Works() public {
         registry.registerAsset(NATIVE_ID, address(0), true, "OKB", 18);
         uint256 commitment = _fe();
-        pool.deposit{value: 1 ether}(NATIVE_ID, 1 ether, commitment);
+        pool.deposit{value: 1 ether}(_proof(), NATIVE_ID, 1 ether, commitment);
         assertTrue(pool.commitmentInserted(commitment));
         assertEq(address(pool).balance, 1 ether);
     }
@@ -118,12 +118,12 @@ contract TalosAssetRegistryTest is TalosTestBase {
     function test_NativeDeposit_RevertsOnValueMismatch() public {
         registry.registerAsset(NATIVE_ID, address(0), true, "OKB", 18);
         vm.expectRevert(Talos__InvalidAmount.selector);
-        pool.deposit{value: 0.5 ether}(NATIVE_ID, 1 ether, _fe());
+        pool.deposit{value: 0.5 ether}(_proof(), NATIVE_ID, 1 ether, _fe());
     }
 
     function test_NativeWithdraw_PaysRecipient() public {
         registry.registerAsset(NATIVE_ID, address(0), true, "OKB", 18);
-        pool.deposit{value: 1 ether}(NATIVE_ID, 1 ether, _fe());
+        pool.deposit{value: 1 ether}(_proof(), NATIVE_ID, 1 ether, _fe());
 
         uint256 root = pool.getLastRoot();
         uint256 nullifier = _fe();
