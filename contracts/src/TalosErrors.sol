@@ -87,6 +87,15 @@ error Talos__NotOwner();
 /// @notice The contract is paused.
 error Talos__EnforcedPause();
 
+/// @notice Verifiers are locked; changes must go through the timelocked propose/execute flow.
+error Talos__VerifiersLocked();
+
+/// @notice The verifier-change timelock has not yet elapsed.
+error Talos__TimelockNotElapsed();
+
+/// @notice No verifier change is pending for this operation.
+error Talos__NoPendingVerifier();
+
 /*//////////////////////////////////////////////////////////////
                           PHASE BOUNDARY
 //////////////////////////////////////////////////////////////*/
