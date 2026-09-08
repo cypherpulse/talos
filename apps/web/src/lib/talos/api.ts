@@ -136,8 +136,10 @@ export const talosApi = {
 
   deposit: (body: { amount: string; assetId?: number }, key?: string) =>
     request<OperationAck>("/api/v1/deposits", { method: "POST", body, idempotencyKey: key }),
-  depositPrepare: (body: { assetId: number; amount: string; owner?: string }, key?: string) =>
-    request<DepositPrepareResponse>("/api/v1/deposits/prepare", { method: "POST", body, idempotencyKey: key }),
+  depositPrepare: (
+    body: { assetId: number; amount: string; owner?: string; commitment?: string; ownerPublicKey?: string },
+    key?: string,
+  ) => request<DepositPrepareResponse>("/api/v1/deposits/prepare", { method: "POST", body, idempotencyKey: key }),
   depositConfirm: (operationId: string, txHash: string) =>
     request<OperationView>(`/api/v1/deposits/${operationId}/confirm`, { method: "POST", body: { txHash } }),
   split: (body: { noteId: string; amount1: string; amount2: string }, key?: string) =>
@@ -150,6 +152,15 @@ export const talosApi = {
   ) => request<OperationAck>("/api/v1/transfers", { method: "POST", body, idempotencyKey: key }),
   withdraw: (body: { noteId: string; recipient: string }, key?: string) =>
     request<OperationAck>("/api/v1/withdrawals", { method: "POST", body, idempotencyKey: key }),
+  // B4 client-side spend proving.
+  notePath: (id: string) =>
+    request<{ root: string; pathElements: string[]; pathIndices: number[]; leafIndex: number | null }>(
+      `/api/v1/notes/${id}/path`,
+    ),
+  withdrawSubmit: (
+    body: { noteId: string; recipient: string; root: string; nullifier: string; proof: string[] },
+    key?: string,
+  ) => request<OperationView>("/api/v1/withdrawals/submit", { method: "POST", body, idempotencyKey: key }),
 
   guardIdentity: () => request<GuardIdentity>("/guard/identity"),
   guardDecisions: () => request<{ decisions: GuardDecisionRecord[] }>("/guard/decisions"),
