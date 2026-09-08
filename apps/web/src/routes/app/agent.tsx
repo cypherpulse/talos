@@ -237,11 +237,12 @@ function ShieldAction({ assetId, amount }: { assetId: number; amount: string }) 
           );
         }
       }
+      if (!prep.proof) throw new Error("Server returned no deposit proof.");
       setStep("Confirm the deposit in your wallet…");
       const txHash = await sendTx(provider, {
         from: address,
         to: prep.poolAddress,
-        data: encodeDeposit(BigInt(assetId), BigInt(base), BigInt(prep.commitment)),
+        data: encodeDeposit(prep.proof, BigInt(assetId), BigInt(base), BigInt(prep.commitment)),
         value: asset.isNative ? BigInt(base) : 0n,
       });
       setStep("Finalizing on Talos…");
