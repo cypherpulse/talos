@@ -1,8 +1,9 @@
 # Talos ZK System (Phase 3)
 
 The real zero-knowledge proving system that enforces the frozen Talos protocol:
-Circom circuits, Poseidon hashing, and a Groth16 proving system over BN254, with a
-snarkjs-generated Solidity verifier wired into `TalosPool`.
+Circom circuits, Poseidon hashing, and a **PLONK** proving system over BN254, with a
+snarkjs-generated Solidity verifier wired into `TalosPool`. PLONK's *universal* setup
+(the Perpetual Powers of Tau) removes the per-circuit trusted-setup ceremony — see §6.
 
 > This document describes what is implemented. It refines — but does not change —
 > the frozen protocol in [`specification.md`](specification.md).
@@ -14,7 +15,7 @@ snarkjs-generated Solidity verifier wired into `TalosPool`.
 | Circuit DSL  | Circom 2.2.3                                                  |
 | Prover/setup | snarkjs 0.7.x                                                 |
 | Hash         | Poseidon (circomlib) over BN254                              |
-| Proof system | Groth16, curve BN254                                          |
+| Proof system | PLONK, curve BN254 (universal setup)                          |
 | On-chain     | Generated Solidity verifier + Poseidon(2) contract, solc 0.8.30 |
 
 ## 2. Circuit architecture
@@ -83,24 +84,34 @@ bytecode) share identical constants. Agreement is proven by:
 
 If they ever disagree, **stop** — do not adjust values to force a match.
 
-## 6. Groth16 setup (development ceremony)
+## 6. PLONK setup (universal SRS — Perpetual Powers of Tau)
 
-> **DEVELOPMENT ONLY — NOT production-secure.** A single contributor with published,
-> fixed entropy strings; the toxic waste is reproducible. A production deployment
-> requires a real multi-party ceremony. This is deliberate for the hackathon/testnet MVP.
+> **Production-grade setup.** PLONK uses a *universal, updatable* structured reference
+> string, so there is **no per-circuit phase-2 ceremony and no per-circuit toxic waste**.
+> We anchor to the real **Perpetual Powers of Tau** (contribution **#80**, 80+ independent
+> contributors), mirrored by the Ethereum Foundation's Privacy & Scaling Explorations
+> (PSE). The setup is sound iff **≥1** of those 80+ contributors destroyed their secret.
 
-- **Powers of Tau:** locally generated `bn128`, power **15** (2¹⁵ = 32,768 ≥ the
-  largest circuit, merge ≈ 12k constraints). One `contribute`, then `prepare phase2`.
-  Entropy string: `"talos development entropy — NOT production"`.
-- **Phase 2 (per circuit):** `groth16 setup` → one `zkey contribute`
-  (entropy `"talos phase2 entropy — NOT production"`) → `verification_key.json` +
-  Solidity verifier.
-- Reproduce end-to-end with `pnpm zk:setup`.
+- **Powers of Tau:** `ppot_0080_16.ptau` (`bn128`, power **16** = 65,536 ≥ the largest
+  circuit — merge ≈ 30.6k PLONK constraints). Downloaded from PSE and **SHA-256-verified**
+  against a pinned digest on every build; it is a build-time input only (runtime needs just
+  the per-circuit `_final.zkey` + `verification_key.json`).
+- **Per circuit:** `plonk setup <r1cs> <ptau> <name>_final.zkey` (deterministic — no
+  contribution) → `verification_key.json` → Solidity verifier. No secret is produced.
+- **Transcript:** [`circuits/build/ceremony-transcript.json`](../../circuits/build/ceremony-transcript.json)
+  records the SRS source, hash, contribution number, and per-circuit zkey/vkey/verifier
+  hashes so anyone can reproduce and check the artifacts.
+- Reproduce end-to-end with `pnpm zk:setup`. Optional cryptographic chain verification of
+  the ptau: `SETUP_VERIFY_PTAU=1 pnpm zk:setup` (runs `snarkjs powersoftau verify`; slow).
+
+> **Why this closes B2:** privacy is a property of the *circuits*, not the proof scheme, so
+> the migration from Groth16 changed **nothing** about what is hidden — it only replaced a
+> dev-only single-party trusted setup with a public multi-party universal one.
 
 ## 7. Proving & verifier generation workflow
 
 ```text
-witness input (private)  →  snarkjs groth16 fullProve  →  proof + public signals
+witness input (private)  →  snarkjs plonk fullProve  →  proof (uint256[24]) + public signals
                                      │
                                      ├─ snarkjs verify (off-chain)
                                      └─ generated Solidity verifier (on-chain)
@@ -108,11 +119,12 @@ witness input (private)  →  snarkjs groth16 fullProve  →  proof + public sig
 
 Per-circuit Solidity verifiers are generated to
 [`contracts/src/verifiers/`](../../contracts/src/verifiers/) (`{Deposit,Transfer,
-Split,Merge,Withdraw}Verifier.sol`) and are **generated, never hand-edited**. The
+Split,Merge,Withdraw}Verifier.sol`) and are **generated, never hand-edited**. Each exposes
+`verifyProof(uint256[24] proof, uint256[N] pubSignals)`. The
 [`TalosVerifier`](../../contracts/src/TalosVerifier.sol) adapter presents each behind
 the frozen `ITalosVerifier` interface, reshaping the pool's dynamic `uint256[]`
 public signals into the circuit's fixed-size array without touching the generated
-pairing check.
+verification.
 
 ## 8. Artifacts & regeneration
 
@@ -151,7 +163,8 @@ in source, emitted in an event, or stored on-chain.
 
 ## 11. Security assumptions
 
-- Groth16 soundness over BN254; Poseidon preimage/collision resistance.
-- The dev trusted setup is **not** production-secure (see §6). Production needs a
-  proper ceremony and a re-export of every verifier.
-- On-chain verification cost is ~210k gas per proof (see the final report).
+- PLONK soundness over BN254 (KZG); Poseidon preimage/collision resistance.
+- The trusted setup is the **public Perpetual Powers of Tau universal SRS** (see §6),
+  sound iff ≥1 of its 80+ contributors was honest; residual soundness risk is circuit
+  correctness, pending external audit. No per-circuit ceremony is required.
+- On-chain verification cost is ~290k gas per proof (PLONK; see the final report).
