@@ -93,6 +93,45 @@ export class NoteManager {
     return note;
   }
 
+  /**
+   * Register a CLIENT-OWNED note (B4 non-custodial deposit). The client derived the
+   * spending key `sk`, `secret`, and `nonce` locally and computed the `commitment` +
+   * `ownerPubKey`; it sends only those two public values. The server stores them for
+   * indexing but knows NO spend secret (`nullifierSecret`/`secret`/`nonce` blank), so it
+   * can never spend this note — spending requires the client's own proof.
+   */
+  async createClientNote(params: {
+    assetId: bigint;
+    value: bigint;
+    commitment: string;
+    ownerPubKey: string;
+    owner?: string;
+  }): Promise<Note> {
+    const now = new Date().toISOString();
+    const note: Note = {
+      id: `note_${randomUUID()}`,
+      assetId: params.assetId.toString(),
+      value: params.value.toString(),
+      ownerPubKey: BigInt(params.ownerPubKey).toString(),
+      secret: "",
+      nonce: "",
+      nullifierSecret: "", // server holds NO spend authority for client-owned notes
+      nullifier: "",
+      commitment: BigInt(params.commitment).toString(),
+      state: "CREATED",
+      leafIndex: null,
+      owner: params.owner ? params.owner.toLowerCase() : null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.notes.create(note);
+    this.logger.info("client-owned note registered (non-custodial)", {
+      noteId: note.id,
+      commitment: note.commitment,
+    });
+    return note;
+  }
+
   async get(id: string): Promise<Note> {
     const note = await this.notes.get(id);
     if (!note) throw NoteNotFound(`note ${id} not found`);
@@ -121,6 +160,19 @@ export class NoteManager {
       await this.transition(note, "PENDING_SPEND").then((n) => this.transition(n, "SPENT")).catch(() => {});
       throw NullifierAlreadySpent(`note ${id} nullifier already spent on-chain`);
     }
+    return this.transition(note, "PENDING_SPEND");
+  }
+
+  /**
+   * Lock a CLIENT-OWNED note for spending (B4). Unlike {@link lockForSpend} it does NOT
+   * read the note's on-chain nullifier — the server never computed one (no spending key).
+   * The engine performs the on-chain nullifier-unspent check with the client-supplied
+   * nullifier instead, and the pool's verifier is the final authority.
+   */
+  async lockClientNote(id: string): Promise<Note> {
+    const note = await this.get(id);
+    if (note.state === "SPENT") throw NoteAlreadySpent(`note ${id} already spent`);
+    if (note.state !== "AVAILABLE") throw NoteNotAvailable(`note ${id} is ${note.state}, not AVAILABLE`);
     return this.transition(note, "PENDING_SPEND");
   }
 
