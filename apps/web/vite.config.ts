@@ -8,6 +8,11 @@ import tailwindcss from "@tailwindcss/vite";
 // `src/server.ts` is our SSR error-wrapper entry; `src/start.ts` registers request
 // middleware (CSRF + error handling). Path alias `@/*` -> `src/*` comes from
 // tsconfig.json via vite-tsconfig-paths.
+//
+// Browser ZK proving avoids Node-built-in-heavy libs: Poseidon uses `poseidon-lite`
+// (pure JS, no polyfills) and snarkjs gets a minimal `Buffer` global set in
+// lib/talos/client-prove.ts — so no node-polyfills plugin is needed (it conflicts with
+// TanStack Start's unenv/Nitro layer on Vite 8).
 export default defineConfig({
   plugins: [
     tsConfigPaths(),
