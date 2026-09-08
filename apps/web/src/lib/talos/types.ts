@@ -98,6 +98,12 @@ export interface DepositPrepareResponse {
   operationId: string;
   status: OperationStatus;
   commitment: string;
+  /**
+   * B1 deposit binding proof (PLONK): flat 24-word array for the on-chain calldata.
+   * `null` in the non-custodial path — the client proved the deposit itself and supplies
+   * its own proof to `encodeDeposit`.
+   */
+  proof: string[] | null;
   asset: Asset;
   poolAddress: string;
   chainId: number;
