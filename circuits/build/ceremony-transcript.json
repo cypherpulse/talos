@@ -1,0 +1,50 @@
+{
+  "protocol": "plonk",
+  "curve": "bn128",
+  "setup": "universal (no per-circuit phase-2 ceremony; no per-circuit toxic waste)",
+  "srs": {
+    "name": "Perpetual Powers of Tau",
+    "contribution": 80,
+    "power": 16,
+    "maxConstraints": 65536,
+    "source": "https://pse-trusted-setup-ppot.s3.eu-central-1.amazonaws.com/pot28_0080/ppot_0080_16.ptau",
+    "mirror": "Ethereum Foundation — Privacy & Scaling Explorations (PSE)",
+    "file": "circuits\\build\\ptau\\ppot_0080_16.ptau",
+    "sha256": "ed3622a7c79b0b49aadd134ebbc5b77df8c8c59bccebdfd0d9bf2c1a51561cf9",
+    "soundness": "sound iff >=1 of the 80+ independent PPOT contributors destroyed their secret",
+    "verifyCommand": "snarkjs powersoftau verify circuits/build/ptau/ppot_0080_16.ptau"
+  },
+  "circuits": {
+    "deposit": {
+      "publicSignals": 3,
+      "zkeySha256": "58472e0ac146a6a0bc85697039d256e4f06dfd5917cbf40ad0cea9b2c5f55679",
+      "vkeySha256": "8d239c804e49909bdaca8754735486ce3c764c66708b644d3265aab678f0e3c3",
+      "solSha256": "44b65b4e43765e5af2aa4147ac36c42e2c9eb7fa6fda349082e6b14bcb9f88b9"
+    },
+    "transfer": {
+      "publicSignals": 4,
+      "zkeySha256": "3562e7a0d2686b6c3503783c7258228b32ec16ea5f1008cd3e5efda83cdd93f4",
+      "vkeySha256": "295b549993d8d4db6d94b047b9f986607b9e2ff9b1f0219cbc2a0b0e228f2649",
+      "solSha256": "845e52308cbed00efc97b0f9135997592b910e6eee2c42b4c8c4052b63e88944"
+    },
+    "split": {
+      "publicSignals": 4,
+      "zkeySha256": "368e9abe0411c298ad022216869fae1a84ce74f7ebab7aaa3d6656f1744920d1",
+      "vkeySha256": "c6db07b29c858a973d1272047c735a69a953c0e4ef15fe4923bdebb27396e80e",
+      "solSha256": "a550aab52035a89460bffa9e1643142b7a85bc64ba54819f0fd00d6b3518d695"
+    },
+    "merge": {
+      "publicSignals": 4,
+      "zkeySha256": "b486eac8881767b4f0410acad1beb5d59fadc50ceb65082653b7906093178a35",
+      "vkeySha256": "2e21811f9fe686dd0258da015032a7fb98956f09791b4aa70eee1dcca65891a0",
+      "solSha256": "93f8e5056cc599f1c10e8a36bbedc724347eb4a626f429bf296906e5065a4153"
+    },
+    "withdraw": {
+      "publicSignals": 5,
+      "zkeySha256": "3842712ce98be8122b8c55c91d1d2c148460b6759c468046eb539f1c2cd5da70",
+      "vkeySha256": "89c243199723d20af56dc62c2b04985211e665233db9d461fcac2cce7a609ef7",
+      "solSha256": "6a57a4a24193257feb2129ff5f6599d320893bcbd51a59a1b7c5c03049bf6178"
+    }
+  },
+  "generatedAt": "2026-09-07T10:51:58.084Z"
+}
