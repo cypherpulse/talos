@@ -7,14 +7,14 @@ import {Talos__InvalidParameters} from "./TalosErrors.sol";
 /**
  * @title TalosVerifier
  * @author Talos
- * @notice Production adapter that presents a snarkjs-generated Groth16 verifier
+ * @notice Production adapter that presents a snarkjs-generated PLONK verifier
  *         through the Phase 2 {ITalosVerifier} boundary.
  * @dev Phase 3. The generated verifiers (contracts/src/verifiers/*.sol) expose
- *      `verifyProof(uint[2], uint[2][2], uint[2], uint[N])` with a FIXED-size public
- *      input array per circuit. The pool speaks the interface's dynamic
- *      `uint256[]`. This adapter bridges the two without touching the generated
- *      cryptography: it forwards the proof and public signals verbatim via a
- *      low-level `staticcall`, so the real pairing check runs unchanged.
+ *      `verifyProof(uint256[24], uint256[N])` with a FIXED-size public-input array
+ *      per circuit. The pool speaks the interface's dynamic `uint256[]`. This adapter
+ *      bridges the two without touching the generated cryptography: it forwards the
+ *      24-word proof and public signals verbatim via a low-level `staticcall`, so the
+ *      real PLONK verification runs unchanged.
  *
  *      One adapter instance wraps one generated verifier and its exact public-signal
  *      count. A length mismatch, a verifier revert, or a `false` result all yield
@@ -24,16 +24,16 @@ import {Talos__InvalidParameters} from "./TalosErrors.sol";
  *      returns; it never fabricates a `true`.
  */
 contract TalosVerifier is ITalosVerifier {
-    /// @notice The snarkjs-generated Groth16 verifier this adapter wraps.
+    /// @notice The snarkjs-generated PLONK verifier this adapter wraps.
     address public immutable verifier;
 
     /// @notice The exact number of public signals the wrapped circuit exposes.
     uint256 public immutable numPublicSignals;
 
-    /// @dev Precomputed selector of `verifyProof(uint256[2],uint256[2][2],uint256[2],uint256[N])`.
+    /// @dev Precomputed selector of `verifyProof(uint256[24],uint256[N])`.
     bytes4 private immutable _selector;
 
-    /// @param verifier_ Address of the generated Groth16 verifier.
+    /// @param verifier_ Address of the generated PLONK verifier.
     /// @param numPublicSignals_ The circuit's public-signal count (frozen per op).
     constructor(address verifier_, uint256 numPublicSignals_) {
         if (verifier_ == address(0) || numPublicSignals_ == 0) revert Talos__InvalidParameters();
@@ -42,27 +42,24 @@ contract TalosVerifier is ITalosVerifier {
         _selector = bytes4(
             keccak256(
                 abi.encodePacked(
-                    "verifyProof(uint256[2],uint256[2][2],uint256[2],uint256[",
-                    _toString(numPublicSignals_),
-                    "])"
+                    "verifyProof(uint256[24],uint256[", _toString(numPublicSignals_), "])"
                 )
             )
         );
     }
 
     /// @inheritdoc ITalosVerifier
-    /// @dev Reconstructs the generated verifier's static calldata (all fixed-size
+    /// @dev Reconstructs the generated verifier's static calldata (both fixed-size
     ///      arrays encode inline) and staticcalls it. Any failure ⇒ `false`.
-    function verifyProof(
-        uint256[2] calldata a,
-        uint256[2][2] calldata b,
-        uint256[2] calldata c,
-        uint256[] calldata publicSignals
-    ) external view override returns (bool) {
+    function verifyProof(uint256[24] calldata proof, uint256[] calldata publicSignals)
+        external
+        view
+        override
+        returns (bool)
+    {
         if (publicSignals.length != numPublicSignals) return false;
 
-        bytes memory data =
-            abi.encodePacked(_selector, a[0], a[1], b[0][0], b[0][1], b[1][0], b[1][1], c[0], c[1]);
+        bytes memory data = abi.encodePacked(_selector, proof);
         for (uint256 i = 0; i < publicSignals.length; ++i) {
             data = abi.encodePacked(data, publicSignals[i]);
         }
