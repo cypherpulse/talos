@@ -21,7 +21,10 @@ import {
     Talos__InvalidAmount,
     Talos__InvalidParameters,
     Talos__NotOwner,
-    Talos__EnforcedPause
+    Talos__EnforcedPause,
+    Talos__VerifiersLocked,
+    Talos__TimelockNotElapsed,
+    Talos__NoPendingVerifier
 } from "../src/TalosErrors.sol";
 
 /**
@@ -60,7 +63,7 @@ contract TalosPoolTest is TalosTestBase {
         // mint/approve happen above so the only logs under assertion are the pool's.
         vm.expectEmit(true, true, false, false);
         emit ITalosPool.Deposit(commitment, 0, 0, 0, 0);
-        pool.deposit(TalosTypes.ASSET_ID, AMOUNT, commitment);
+        pool.deposit(_proof(), TalosTypes.ASSET_ID, AMOUNT, commitment);
     }
 
     function test_Deposit_MultipleAdvanceLeafIndex() public {
@@ -73,28 +76,28 @@ contract TalosPoolTest is TalosTestBase {
 
     function test_Deposit_RevertsOnZeroAmount() public {
         vm.expectRevert(Talos__InvalidAmount.selector);
-        pool.deposit(TalosTypes.ASSET_ID, 0, _fe());
+        pool.deposit(_proof(), TalosTypes.ASSET_ID, 0, _fe());
     }
 
     function test_Deposit_RevertsOnAmountTooLarge() public {
         uint256 tooLarge = uint256(type(uint128).max) + 1;
         vm.expectRevert(Talos__InvalidAmount.selector);
-        pool.deposit(TalosTypes.ASSET_ID, tooLarge, _fe());
+        pool.deposit(_proof(), TalosTypes.ASSET_ID, tooLarge, _fe());
     }
 
     function test_Deposit_RevertsOnInvalidAsset() public {
         vm.expectRevert(Talos__InvalidAsset.selector);
-        pool.deposit(TalosTypes.ASSET_ID + 1, AMOUNT, _fe());
+        pool.deposit(_proof(), TalosTypes.ASSET_ID + 1, AMOUNT, _fe());
     }
 
     function test_Deposit_RevertsOnZeroCommitment() public {
         vm.expectRevert(Talos__InvalidCommitment.selector);
-        pool.deposit(TalosTypes.ASSET_ID, AMOUNT, 0);
+        pool.deposit(_proof(), TalosTypes.ASSET_ID, AMOUNT, 0);
     }
 
     function test_Deposit_RevertsOnNonFieldCommitment() public {
         vm.expectRevert(Talos__InvalidCommitment.selector);
-        pool.deposit(TalosTypes.ASSET_ID, AMOUNT, TalosTypes.FIELD_SIZE); // == r is out of range
+        pool.deposit(_proof(), TalosTypes.ASSET_ID, AMOUNT, TalosTypes.FIELD_SIZE); // == r is out of range
     }
 
     function test_Deposit_RevertsOnDuplicateCommitment() public {
@@ -104,7 +107,7 @@ contract TalosPoolTest is TalosTestBase {
         token.mint(address(this), AMOUNT);
         token.approve(address(pool), AMOUNT);
         vm.expectRevert(Talos__InvalidCommitment.selector);
-        pool.deposit(TalosTypes.ASSET_ID, AMOUNT, commitment);
+        pool.deposit(_proof(), TalosTypes.ASSET_ID, AMOUNT, commitment);
     }
 
     function test_Deposit_RevertsWhenPaused() public {
@@ -112,7 +115,31 @@ contract TalosPoolTest is TalosTestBase {
         token.mint(address(this), AMOUNT);
         token.approve(address(pool), AMOUNT);
         vm.expectRevert(Talos__EnforcedPause.selector);
-        pool.deposit(TalosTypes.ASSET_ID, AMOUNT, _fe());
+        pool.deposit(_proof(), TalosTypes.ASSET_ID, AMOUNT, _fe());
+    }
+
+    /// @dev B1: the deposit binding proof is enforced — if the Deposit verifier rejects,
+    ///      the deposit reverts and NO commitment/funds enter the pool.
+    function test_Deposit_RevertsOnInvalidBindingProof() public {
+        verifier.setResult(false); // deposit binding proof no longer accepted
+        token.mint(address(this), AMOUNT);
+        token.approve(address(pool), AMOUNT);
+        uint256 commitment = _fe();
+        vm.expectRevert(Talos__InvalidProof.selector);
+        pool.deposit(_proof(), TalosTypes.ASSET_ID, AMOUNT, commitment);
+        assertFalse(pool.commitmentInserted(commitment), "commitment must not be inserted");
+        assertEq(token.balanceOf(address(pool)), 0, "pool must not be funded");
+    }
+
+    /// @dev B1: deposit requires a Deposit verifier to be configured.
+    function test_Deposit_RevertsWhenDepositVerifierUnset() public {
+        // Fresh pool with no verifiers configured.
+        TalosPool bare =
+            new TalosPool(ITalosAssetRegistry(address(registry)), IHasher(address(hasher)), owner);
+        token.mint(address(this), AMOUNT);
+        token.approve(address(bare), AMOUNT);
+        vm.expectRevert(Talos__InvalidVerifier.selector);
+        bare.deposit(_proof(), TalosTypes.ASSET_ID, AMOUNT, _fe());
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -352,6 +379,50 @@ contract TalosPoolTest is TalosTestBase {
         pool.setVerifier(TalosTypes.Operation.Transfer, ITalosVerifier(address(0)));
     }
 
+    /*//////////////////////////////////////////////////////////////
+                    VERIFIER GOVERNANCE (B3, timelock)
+    //////////////////////////////////////////////////////////////*/
+
+    function test_LockVerifiers_BlocksImmediateSet() public {
+        pool.lockVerifiers();
+        assertTrue(pool.verifiersLocked());
+        vm.expectRevert(Talos__VerifiersLocked.selector);
+        pool.setVerifier(TalosTypes.Operation.Transfer, ITalosVerifier(address(verifier)));
+    }
+
+    function test_LockVerifiers_RevertsForNonOwner() public {
+        vm.prank(stranger);
+        vm.expectRevert(Talos__NotOwner.selector);
+        pool.lockVerifiers();
+    }
+
+    function test_ProposeExecuteVerifier_EnforcesTimelock() public {
+        pool.lockVerifiers();
+        MockVerifier next = new MockVerifier(true);
+        pool.proposeVerifier(TalosTypes.Operation.Transfer, ITalosVerifier(address(next)));
+
+        // Cannot execute before the timelock elapses.
+        vm.expectRevert(Talos__TimelockNotElapsed.selector);
+        pool.executeVerifier(TalosTypes.Operation.Transfer);
+
+        // After the delay, the swap goes through.
+        vm.warp(block.timestamp + pool.VERIFIER_TIMELOCK());
+        pool.executeVerifier(TalosTypes.Operation.Transfer);
+        assertEq(address(pool.verifiers(TalosTypes.Operation.Transfer)), address(next));
+    }
+
+    function test_ExecuteVerifier_RevertsWithoutPending() public {
+        pool.lockVerifiers();
+        vm.expectRevert(Talos__NoPendingVerifier.selector);
+        pool.executeVerifier(TalosTypes.Operation.Transfer);
+    }
+
+    function test_ProposeVerifier_RevertsForNonOwner() public {
+        vm.prank(stranger);
+        vm.expectRevert(Talos__NotOwner.selector);
+        pool.proposeVerifier(TalosTypes.Operation.Transfer, ITalosVerifier(address(verifier)));
+    }
+
     function test_SetPaused_RevertsForNonOwner() public {
         vm.prank(stranger);
         vm.expectRevert(Talos__NotOwner.selector);
@@ -416,7 +487,7 @@ contract TalosPoolTest is TalosTestBase {
 
         token.mint(address(this), amount);
         token.approve(address(pool), amount);
-        pool.deposit(TalosTypes.ASSET_ID, amount, commitment);
+        pool.deposit(_proof(), TalosTypes.ASSET_ID, amount, commitment);
 
         assertTrue(pool.commitmentInserted(commitment));
         assertEq(token.balanceOf(address(pool)), amount);
