@@ -14,12 +14,13 @@ import {TransferVerifier} from "../src/verifiers/TransferVerifier.sol";
 import {SplitVerifier} from "../src/verifiers/SplitVerifier.sol";
 import {MergeVerifier} from "../src/verifiers/MergeVerifier.sol";
 import {WithdrawVerifier} from "../src/verifiers/WithdrawVerifier.sol";
+import {DepositVerifier} from "../src/verifiers/DepositVerifier.sol";
 
 /// @title Deploy
 /// @author Talos
 /// @notice Deploys the standalone {TalosAssetRegistry}, registers the X Layer testnet
 ///         assets (USDC=1, USDT=2, USDG=3, native OKB=4), deploys {TalosPool} linked to
-///         the registry, and installs the generated Groth16 verifiers behind the
+///         the registry, and installs the generated PLONK verifiers behind the
 ///         {TalosVerifier} adapter for each private operation.
 /// @dev The Poseidon(2) hasher is deployed separately from the circomlibjs bytecode
 ///      (see packages/zk) and supplied via POSEIDON_HASHER_ADDRESS. Token addresses are
@@ -61,11 +62,16 @@ contract Deploy is Script {
 
         pool = new TalosPool(ITalosAssetRegistry(address(registry)), IHasher(hasher), owner);
 
-        // Deploy each generated Groth16 verifier + its adapter, wire it into the pool, and log both.
-        _install(pool, TalosTypes.Operation.Transfer, address(new TransferVerifier()), 4, "Transfer");
+        // Deploy each generated PLONK verifier + its adapter, wire it into the pool, and log both.
+        _install(
+            pool, TalosTypes.Operation.Transfer, address(new TransferVerifier()), 4, "Transfer"
+        );
         _install(pool, TalosTypes.Operation.Split, address(new SplitVerifier()), 4, "Split");
         _install(pool, TalosTypes.Operation.Merge, address(new MergeVerifier()), 4, "Merge");
-        _install(pool, TalosTypes.Operation.Withdraw, address(new WithdrawVerifier()), 5, "Withdraw");
+        _install(
+            pool, TalosTypes.Operation.Withdraw, address(new WithdrawVerifier()), 5, "Withdraw"
+        );
+        _install(pool, TalosTypes.Operation.Deposit, address(new DepositVerifier()), 3, "Deposit");
 
         vm.stopBroadcast();
 
