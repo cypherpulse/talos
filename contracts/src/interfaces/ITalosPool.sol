@@ -71,7 +71,12 @@ interface ITalosPool {
     /// @notice Deposit a registered asset and create one note commitment. Send native
     ///         value when the asset is the chain's native token (OKB); otherwise the
     ///         ERC-20 `amount` is pulled via transferFrom and no value may be sent.
-    function deposit(uint256 assetId, uint256 amount, uint256 commitment) external payable;
+    function deposit(
+        TalosTypes.Proof calldata proof,
+        uint256 assetId,
+        uint256 amount,
+        uint256 commitment
+    ) external payable;
 
     /// @notice Private transfer: consume one note, create two output commitments.
     function transfer(
