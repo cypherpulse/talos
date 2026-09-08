@@ -1,6 +1,15 @@
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 import { loadConfig } from "../config/index.js";
 import { createLogger } from "../observability/logger.js";
+
+// Load the root .env so `pnpm db:migrate` picks up DATABASE_URL when run standalone
+// (src/database → src → core → services → root). The server entry loads it too; the
+// Node built-in loader is idempotent, so re-loading is harmless.
+const ENV_FILE = join(resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".."), ".env");
+if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
 /**
  * Idempotent schema bootstrap. Applies the Phase 4 §27 tables + indexes. This mirrors
