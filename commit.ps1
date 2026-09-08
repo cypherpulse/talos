@@ -13,7 +13,15 @@ $modifiedFiles = ($modifiedUnstaged + $modifiedStaged) | Select-Object -Unique
 $allFiles = ($untrackedFiles + $modifiedFiles) | Select-Object -Unique
 
 # Comprehensive commit message for Hermes Bridge project
-$commitMessage = "feat: Refactor code structure and remove redundant code blocks for improved readability and maintainability"
+$commitMessage = "feat(audit): add production gap analysis document detailing critical blockers and remediation steps
+
+feat(tests): implement non-custodial deposit proving test to ensure client-side key management
+
+feat(tests): implement non-custodial withdraw proving test to validate client-side key management
+
+test(poseidon): add parity check for poseidon-lite and circomlibjs to ensure consistent field element outputs
+
+build(setup): create PLONK trusted setup script for universal SRS using Perpetual Powers of Tau"
 
 # Commit each file individually
 foreach ($file in $allFiles) {
