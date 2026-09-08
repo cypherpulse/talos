@@ -28,7 +28,10 @@ import {
     Talos__InvalidParameters,
     Talos__ReentrantCall,
     Talos__NotOwner,
-    Talos__EnforcedPause
+    Talos__EnforcedPause,
+    Talos__VerifiersLocked,
+    Talos__TimelockNotElapsed,
+    Talos__NoPendingVerifier
 } from "./TalosErrors.sol";
 
 /**
@@ -102,6 +105,18 @@ contract TalosPool is ITalosPool {
     /// @notice Per-operation proof verifier. The zero address means "unconfigured".
     mapping(TalosTypes.Operation operation => ITalosVerifier verifier) public verifiers;
 
+    /// @notice Delay a verifier change must sit before it can be executed once locked (B3).
+    uint256 public constant VERIFIER_TIMELOCK = 2 days;
+
+    /// @notice Once true, verifiers can only change via the timelocked propose/execute flow.
+    ///         Enables production immutability-with-escape: an owner can never instantly swap
+    ///         a verifier to forge spends; a change is publicly visible for {VERIFIER_TIMELOCK}.
+    bool public verifiersLocked;
+
+    /// @notice Pending timelocked verifier change per operation (0 ⇒ none).
+    mapping(TalosTypes.Operation operation => ITalosVerifier verifier) public pendingVerifier;
+    mapping(TalosTypes.Operation operation => uint256 eta) public pendingVerifierEta;
+
     // --- Protocol state ---
 
     /// @notice Consumed nullifiers. `true` ⇒ the corresponding note was spent.
@@ -127,6 +142,14 @@ contract TalosPool is ITalosPool {
 
     /// @notice Emitted when the verifier for `operation` is set to `verifier`.
     event VerifierUpdated(TalosTypes.Operation indexed operation, address indexed verifier);
+
+    /// @notice Emitted when verifiers are permanently locked to timelocked changes only.
+    event VerifiersLocked();
+
+    /// @notice Emitted when a timelocked verifier change is proposed.
+    event VerifierProposed(
+        TalosTypes.Operation indexed operation, address indexed verifier, uint256 eta
+    );
 
     /// @notice Emitted when the pause flag is set to `paused`.
     event PausedSet(bool paused);
@@ -193,17 +216,27 @@ contract TalosPool is ITalosPool {
     ///      No proof in Phase 2; the Phase 3 deposit circuit binds `commitment` to
     ///      `[assetId, amount]`. Checks-Effects-Interactions: the commitment is recorded
     ///      before the transfer, and the whole call is atomic.
-    function deposit(uint256 assetId, uint256 amount, uint256 commitment)
-        external
-        payable
-        whenNotPaused
-        nonReentrant
-    {
+    function deposit(
+        TalosTypes.Proof calldata proof,
+        uint256 assetId,
+        uint256 amount,
+        uint256 commitment
+    ) external payable whenNotPaused nonReentrant {
         // --- Checks ---
         (address token,, bool isNative, bool registered,) = registry.assets(assetId);
         if (!registered) revert Talos__InvalidAsset();
         if (!amount.isValidValue()) revert Talos__InvalidAmount();
         _validateNewCommitment(commitment);
+
+        // Binding proof (B1): cryptographically ties the PUBLIC (assetId, amount) to the
+        // value/asset committed inside `commitment`, so a depositor cannot fund `amount`
+        // while inserting a commitment worth more. Public signals (FROZEN, from
+        // deposit.circom): [assetId, amount, commitment].
+        uint256[] memory signals = new uint256[](3);
+        signals[0] = assetId;
+        signals[1] = amount;
+        signals[2] = commitment;
+        _verify(TalosTypes.Operation.Deposit, proof, signals);
 
         // --- Effects ---
         (uint256 index, uint256 newRoot) = _insertCommitment(commitment);
@@ -348,8 +381,43 @@ contract TalosPool is ITalosPool {
         external
         onlyOwner
     {
+        // Immediate set is allowed only during initial setup. Once locked, changes MUST go
+        // through the timelocked propose/execute flow so a swap can never be instantaneous.
+        if (verifiersLocked) revert Talos__VerifiersLocked();
         if (address(verifier) == address(0)) revert Talos__InvalidVerifier();
         verifiers[operation] = verifier;
+        emit VerifierUpdated(operation, address(verifier));
+    }
+
+    /// @notice Permanently lock verifiers so they can only change via the timelocked flow.
+    /// @dev Irreversible. Intended to be called once, post-deployment, after all verifiers
+    ///      are wired — closing the "owner instantly installs a malicious verifier" hole (B3).
+    function lockVerifiers() external onlyOwner {
+        verifiersLocked = true;
+        emit VerifiersLocked();
+    }
+
+    /// @notice Propose a verifier change; executable after {VERIFIER_TIMELOCK} elapses.
+    function proposeVerifier(TalosTypes.Operation operation, ITalosVerifier verifier)
+        external
+        onlyOwner
+    {
+        if (address(verifier) == address(0)) revert Talos__InvalidVerifier();
+        pendingVerifier[operation] = verifier;
+        uint256 eta = block.timestamp + VERIFIER_TIMELOCK;
+        pendingVerifierEta[operation] = eta;
+        emit VerifierProposed(operation, address(verifier), eta);
+    }
+
+    /// @notice Execute a previously-proposed verifier change once its timelock has elapsed.
+    function executeVerifier(TalosTypes.Operation operation) external onlyOwner {
+        uint256 eta = pendingVerifierEta[operation];
+        if (eta == 0) revert Talos__NoPendingVerifier();
+        if (block.timestamp < eta) revert Talos__TimelockNotElapsed();
+        ITalosVerifier verifier = pendingVerifier[operation];
+        verifiers[operation] = verifier;
+        delete pendingVerifier[operation];
+        delete pendingVerifierEta[operation];
         emit VerifierUpdated(operation, address(verifier));
     }
 
@@ -458,7 +526,7 @@ contract TalosPool is ITalosPool {
     ) private view {
         ITalosVerifier verifier = verifiers[operation];
         if (address(verifier) == address(0)) revert Talos__InvalidVerifier();
-        if (!verifier.verifyProof(proof.a, proof.b, proof.c, signals)) {
+        if (!verifier.verifyProof(proof.data, signals)) {
             revert Talos__InvalidProof();
         }
     }
