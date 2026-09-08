@@ -7,6 +7,12 @@ import { useWallet } from "@/lib/talos/wallet";
 import { assetById, formatAssetAmount, useAssets } from "@/lib/talos/assets";
 import { decodeKey } from "@/lib/talos/keys";
 import {
+  loadClientNotes,
+  proveDepositInBrowser,
+  proveWithdrawInBrowser,
+  rememberClientNote,
+} from "@/lib/talos/client-prove";
+import {
   encodeApprove,
   encodeDeposit,
   ensureChain,
@@ -104,6 +110,7 @@ export function ShieldForm() {
   const [error, setError] = useState<string | null>(null);
   const [operationId, setOperationId] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
+  const [nonCustodial, setNonCustodial] = useState(false);
 
   const base = parseUnits(amount, asset.decimals);
   const valid = base !== null && isValidValue(base);
@@ -152,23 +159,50 @@ export function ShieldForm() {
       return;
     }
     try {
-      setStep("Preparing private note…");
-      const prep = await talosApi.depositPrepare(
-        { assetId, amount: base, owner: address },
-        newIdempotencyKey(),
-      );
+      let commitment: string;
+      let proofWords: string[];
+      let opId: string;
+      let poolAddr: string;
+
+      if (nonCustodial) {
+        // B4: derive keys + prove the deposit binding in the browser. The spending key
+        // never leaves this device; the server only indexes the resulting commitment.
+        setStep("Sign to derive your keys, then proving in your browser…");
+        const noteIndex = Date.now();
+        const cp = await proveDepositInBrowser(BigInt(assetId), BigInt(base), noteIndex);
+        rememberClientNote({ commitment: cp.commitment, noteIndex, assetId: String(assetId), amount: base });
+
+        setStep("Registering your note…");
+        const prep = await talosApi.depositPrepare(
+          { assetId, amount: base, owner: address, commitment: cp.commitment, ownerPublicKey: cp.ownerPubKey },
+          newIdempotencyKey(),
+        );
+        commitment = prep.commitment;
+        proofWords = cp.proof;
+        opId = prep.operationId;
+        poolAddr = prep.poolAddress;
+      } else {
+        setStep("Preparing private note…");
+        const prep = await talosApi.depositPrepare({ assetId, amount: base, owner: address }, newIdempotencyKey());
+        if (!prep.proof) throw new Error("Server returned no deposit proof.");
+        commitment = prep.commitment;
+        proofWords = prep.proof;
+        opId = prep.operationId;
+        poolAddr = prep.poolAddress;
+      }
+
       await ensureChain(provider);
 
       // ERC-20 assets need an allowance for the pool before it can pull the tokens.
       if (!asset.isNative) {
         setStep("Checking allowance…");
-        const allowance = await readAllowance(asset.address, address, prep.poolAddress);
+        const allowance = await readAllowance(asset.address, address, poolAddr);
         if (allowance < BigInt(base)) {
           setStep("Approve the token in your wallet…");
           const approveTx = await sendTx(provider, {
             from: address,
             to: asset.address,
-            data: encodeApprove(prep.poolAddress, (1n << 256n) - 1n),
+            data: encodeApprove(poolAddr, (1n << 256n) - 1n),
           });
           setStep("Waiting for approval…");
           await waitForTx(approveTx);
@@ -178,16 +212,16 @@ export function ShieldForm() {
       setStep("Confirm the deposit in your wallet…");
       const depositTx = await sendTx(provider, {
         from: address,
-        to: prep.poolAddress,
-        data: encodeDeposit(BigInt(assetId), BigInt(base), BigInt(prep.commitment)),
+        to: poolAddr,
+        data: encodeDeposit(proofWords, BigInt(assetId), BigInt(base), BigInt(commitment)),
         value: asset.isNative ? BigInt(base) : 0n,
       });
 
       setStep("Finalizing on Talos…");
-      await talosApi.depositConfirm(prep.operationId, depositTx);
-      track(prep.operationId);
+      await talosApi.depositConfirm(opId, depositTx);
+      track(opId);
       void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
-      setOperationId(prep.operationId);
+      setOperationId(opId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Shield failed");
     } finally {
@@ -236,6 +270,23 @@ export function ShieldForm() {
           Connect your wallet (top-right) — you sign and fund the deposit yourself.
         </p>
       ) : null}
+
+      <label className="flex items-start gap-2.5 rounded-xl border border-border/60 bg-surface/40 p-3">
+        <input
+          type="checkbox"
+          checked={nonCustodial}
+          onChange={(e) => setNonCustodial(e.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-primary"
+        />
+        <span className="min-w-0">
+          <span className="text-xs font-medium text-foreground">Non-custodial (prove in your browser)</span>
+          <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+            Derive your keys from a wallet signature and generate the deposit proof locally — your
+            spending key never leaves this device, so the server can never spend this note.
+            Experimental: spending these notes needs the upcoming client-side spend feature.
+          </span>
+        </span>
+      </label>
 
       <SubmitButton pending={pending} disabled={!valid || !address} onClick={() => void run()}>
         {pending ? (step ?? "Working…") : `Shield ${asset.symbol}`}
@@ -314,8 +365,12 @@ export function MergeForm() {
   return (
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Note 1"><NoteSelect notes={notes} value={n1} onChange={setN1} /></Field>
-        <Field label="Note 2"><NoteSelect notes={notes} value={n2} onChange={setN2} /></Field>
+        <Field label="Note 1">
+          <NoteSelect notes={notes} value={n1} onChange={setN1} disabledIds={[n2]} />
+        </Field>
+        <Field label="Note 2">
+          <NoteSelect notes={notes} value={n2} onChange={setN2} disabledIds={[n1]} />
+        </Field>
       </div>
       {sum ? (
         <p className="mono text-xs text-primary">
@@ -404,17 +459,80 @@ export function TransferForm() {
 export function WithdrawForm() {
   const { notes, isError, error, refetch } = useNotes();
   const { address } = useWallet();
+  const { track } = useTrackedOperations();
+  const queryClient = useQueryClient();
   const [noteId, setNoteId] = useState("");
   const [recipient, setRecipient] = useState("");
-  const { operationId, submit, pending, error: opError, reset } = useOperationSubmit();
+  const [step, setStep] = useState<string | null>(null);
+  const [opError, setOpError] = useState<string | null>(null);
+  const [operationId, setOperationId] = useState<string | null>(null);
+
   const note = notes?.find((n) => n.id === noteId);
   const target = recipient || address || "";
   const valid = Boolean(note && isAddress(target));
+  const pending = step !== null;
+  // A client-owned note (from a non-custodial deposit) must be proved in the browser — the
+  // server has no spending key for it. Detected via the local client-note registry.
+  const clientRec = useMemo(
+    () => (note ? loadClientNotes().find((r) => r.commitment === note.commitment) : undefined),
+    [note],
+  );
 
   if (isError) return <ErrorState message={String(error)} onRetry={refetch} />;
   if (!notes) return <p className="text-sm text-muted-foreground">Loading notes…</p>;
   if (notes.length === 0) return <NoNotes />;
-  if (operationId) return <Result operationId={operationId} title="Withdrawing to X Layer" onReset={reset} />;
+  if (operationId)
+    return (
+      <Result
+        operationId={operationId}
+        title="Withdrawing to X Layer"
+        onReset={() => {
+          setOperationId(null);
+          setRecipient("");
+          setNoteId("");
+          setStep(null);
+          setOpError(null);
+        }}
+      />
+    );
+
+  const run = async () => {
+    if (!note || !isAddress(target)) return;
+    setOpError(null);
+    try {
+      if (clientRec) {
+        // Non-custodial: prove the withdraw in the browser, server relays it.
+        setStep("Fetching Merkle path…");
+        const path = await talosApi.notePath(noteId);
+        setStep("Sign to derive keys, then proving in your browser…");
+        const cp = await proveWithdrawInBrowser({
+          noteIndex: clientRec.noteIndex,
+          assetId: BigInt(note.assetId),
+          value: BigInt(note.value),
+          recipient: target,
+          path,
+        });
+        setStep("Relaying withdrawal…");
+        const op = await talosApi.withdrawSubmit(
+          { noteId, recipient: target, root: cp.root, nullifier: cp.nullifier, proof: cp.proof },
+          newIdempotencyKey(),
+        );
+        track(op.operationId);
+        void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
+        setOperationId(op.operationId);
+      } else {
+        setStep("Submitting withdrawal…");
+        const ack = await talosApi.withdraw({ noteId, recipient: target }, newIdempotencyKey());
+        track(ack.operationId);
+        void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
+        setOperationId(ack.operationId);
+      }
+    } catch (e) {
+      setOpError(e instanceof Error ? e.message : "Withdraw failed");
+    } finally {
+      setStep(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -434,14 +552,11 @@ export function WithdrawForm() {
       {note ? (
         <p className="mono text-xs text-muted-foreground">
           Withdrawing {formatUnits(note.value)} {ASSET_SYMBOL} to a public address.
+          {clientRec ? " · non-custodial (proved in your browser, key never leaves this device)" : ""}
         </p>
       ) : null}
-      <SubmitButton
-        pending={pending}
-        disabled={!valid}
-        onClick={() => valid && submit(() => talosApi.withdraw({ noteId, recipient: target }, newIdempotencyKey()))}
-      >
-        Withdraw
+      <SubmitButton pending={pending} disabled={!valid} onClick={() => void run()}>
+        {pending ? (step ?? "Working…") : "Withdraw"}
       </SubmitButton>
       {opError ? <p className="mono text-xs text-destructive">{opError}</p> : null}
     </div>
