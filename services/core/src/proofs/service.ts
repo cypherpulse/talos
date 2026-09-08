@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { groth16 } from "snarkjs";
-import type { Groth16Proof, OperationType, ProofPackage } from "../domain/types.js";
+import { plonk } from "snarkjs";
+import type { OperationType, PlonkProof, ProofPackage } from "../domain/types.js";
 import { ProofGenerationFailed, ProofValidationFailed } from "../errors/index.js";
 import type { Logger } from "../observability/logger.js";
 
@@ -19,7 +19,7 @@ function circuitName(op: OperationType): string {
 }
 
 /**
- * ProofService (Phase 4 §16). Generates REAL Groth16 proofs with snarkjs using the
+ * ProofService (Phase 4 §16). Generates REAL PLONK proofs with snarkjs using the
  * Phase 3 artifacts, self-verifies every proof off-chain, and returns a validated
  * {ProofPackage}. No mock proofs, ever. Private witness inputs stay in memory and are
  * never logged.
@@ -54,7 +54,7 @@ export class ProofService {
     let proofRaw;
     let publicSignals: string[];
     try {
-      const out = await groth16.fullProve(input, wasm, zkey);
+      const out = await plonk.fullProve(input, wasm, zkey);
       proofRaw = out.proof;
       publicSignals = out.publicSignals;
     } catch (e) {
@@ -63,7 +63,7 @@ export class ProofService {
 
     // Self-verify off-chain before anything else touches the proof.
     const vk = JSON.parse(readFileSync(vkey, "utf8"));
-    const ok = await groth16.verify(vk, publicSignals, proofRaw);
+    const ok = await plonk.verify(vk, publicSignals, proofRaw);
     if (!ok) throw ProofGenerationFailed(`snarkjs verification failed for ${circuit}`);
 
     const expected = PUBLIC_SIGNAL_COUNT[circuit]!;
@@ -82,20 +82,20 @@ export class ProofService {
       circuit,
       proof,
       publicSignals,
-      verificationKeyId: `${circuit}:groth16:v1`,
+      verificationKeyId: `${circuit}:plonk:v1`,
       generatedAt: new Date().toISOString(),
     };
   }
 
-  private async toSolidityProof(proofRaw: unknown, publicSignals: string[]): Promise<Groth16Proof> {
-    const calldata = await groth16.exportSolidityCallData(proofRaw as never, publicSignals);
-    const [a, b, c] = JSON.parse(`[${calldata}]`) as [
-      [string, string],
-      [[string, string], [string, string]],
-      [string, string],
-      string[],
-    ];
-    return { a, b, c };
+  private async toSolidityProof(proofRaw: unknown, publicSignals: string[]): Promise<PlonkProof> {
+    // PLONK's exportSolidityCallData emits two adjacent arrays "[..24..][..N..]" with no
+    // separating comma; splice one in so it parses as [proof, publicSignals].
+    const calldata = await plonk.exportSolidityCallData(proofRaw as never, publicSignals);
+    const [proof] = JSON.parse(`[${calldata.replace(/\]\s*\[/, "],[")}]`) as [string[], string[]];
+    if (proof.length !== 24) {
+      throw ProofValidationFailed(`unexpected PLONK proof length`, { expected: 24, got: proof.length });
+    }
+    return proof;
   }
 }
 
