@@ -1,6 +1,6 @@
 import type { Address, Hash } from "viem";
 import type { ChainClient } from "../blockchain/client.js";
-import type { Groth16Proof } from "../domain/types.js";
+import type { PlonkProof } from "../domain/types.js";
 import { erc20Abi, talosPoolAbi } from "./abis.js";
 
 /**
@@ -9,15 +9,9 @@ import { erc20Abi, talosPoolAbi } from "./abis.js";
  * works in decimal strings / bigints, never in ABIs.
  */
 
-function toProofArg(p: Groth16Proof) {
-  return {
-    a: [BigInt(p.a[0]), BigInt(p.a[1])] as const,
-    b: [
-      [BigInt(p.b[0][0]), BigInt(p.b[0][1])],
-      [BigInt(p.b[1][0]), BigInt(p.b[1][1])],
-    ] as const,
-    c: [BigInt(p.c[0]), BigInt(p.c[1])] as const,
-  };
+function toProofArg(p: PlonkProof) {
+  if (p.length !== 24) throw new Error(`PLONK proof must be 24 words, got ${p.length}`);
+  return { data: p.map((w) => BigInt(w)) as readonly bigint[] };
 }
 
 export class ContractClient {
@@ -34,11 +28,16 @@ export class ContractClient {
 
   // --- TalosPool writes ---
 
-  deposit(assetId: bigint, amount: bigint, commitment: bigint): Promise<Hash> {
-    return this.chain.writeContract(this.poolAddress, talosPoolAbi, "deposit", [assetId, amount, commitment]);
+  deposit(proof: PlonkProof, assetId: bigint, amount: bigint, commitment: bigint): Promise<Hash> {
+    return this.chain.writeContract(this.poolAddress, talosPoolAbi, "deposit", [
+      toProofArg(proof),
+      assetId,
+      amount,
+      commitment,
+    ]);
   }
 
-  transfer(proof: Groth16Proof, root: bigint, nullifier: bigint, out1: bigint, out2: bigint): Promise<Hash> {
+  transfer(proof: PlonkProof, root: bigint, nullifier: bigint, out1: bigint, out2: bigint): Promise<Hash> {
     return this.chain.writeContract(this.poolAddress, talosPoolAbi, "transfer", [
       toProofArg(proof),
       root,
@@ -48,7 +47,7 @@ export class ContractClient {
     ]);
   }
 
-  split(proof: Groth16Proof, root: bigint, nullifier: bigint, out1: bigint, out2: bigint): Promise<Hash> {
+  split(proof: PlonkProof, root: bigint, nullifier: bigint, out1: bigint, out2: bigint): Promise<Hash> {
     return this.chain.writeContract(this.poolAddress, talosPoolAbi, "split", [
       toProofArg(proof),
       root,
@@ -58,12 +57,12 @@ export class ContractClient {
     ]);
   }
 
-  merge(proof: Groth16Proof, root: bigint, n1: bigint, n2: bigint, out: bigint): Promise<Hash> {
+  merge(proof: PlonkProof, root: bigint, n1: bigint, n2: bigint, out: bigint): Promise<Hash> {
     return this.chain.writeContract(this.poolAddress, talosPoolAbi, "merge", [toProofArg(proof), root, n1, n2, out]);
   }
 
   withdraw(
-    proof: Groth16Proof,
+    proof: PlonkProof,
     root: bigint,
     nullifier: bigint,
     amount: bigint,
