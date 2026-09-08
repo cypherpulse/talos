@@ -94,18 +94,17 @@ export function toNotePublic(note: Note): NotePublic {
   };
 }
 
-/** A Groth16 proof in the Solidity-verifier encoding. */
-export interface Groth16Proof {
-  a: [string, string];
-  b: [[string, string], [string, string]];
-  c: [string, string];
-}
+/**
+ * A PLONK proof in the Solidity-verifier encoding: the flat 24-element array
+ * (9 group elements + 6 field evaluations) snarkjs' PLONK verifier consumes.
+ */
+export type PlonkProof = string[];
 
 /** A proof plus its context (Phase 4 §17). */
 export interface ProofPackage {
   operation: OperationType;
   circuit: string;
-  proof: Groth16Proof;
+  proof: PlonkProof;
   publicSignals: string[];
   verificationKeyId: string;
   generatedAt: string;
