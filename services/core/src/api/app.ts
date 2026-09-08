@@ -156,6 +156,11 @@ export function createApp(services: Services): Hono<Env> {
     assetId: z.number().int().positive(),
     amount: z.string().regex(/^\d+$/),
     owner: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+    // B4 non-custodial deposit: when the client proves the binding itself, it supplies the
+    // note commitment + owner public key (field-element decimals). The server then indexes
+    // the client-owned note and returns no proof of its own.
+    commitment: z.string().regex(/^\d+$/).optional(),
+    ownerPublicKey: z.string().regex(/^\d+$/).optional(),
   });
   app.post("/api/v1/deposits/prepare", async (c) => {
     const body = PrepareSchema.parse(await c.req.json());
@@ -163,12 +168,13 @@ export function createApp(services: Services): Hono<Env> {
     if (!asset) throw OperationNotFound(`asset ${body.assetId} is not registered`);
     const idem = c.req.header("idempotency-key") ?? null;
     const created = await engine.createOperation("DEPOSIT", body, idem);
-    const { op, commitment } = await engine.prepareDeposit(created);
+    const { op, commitment, proof } = await engine.prepareDeposit(created);
     return c.json(
       {
         operationId: op.id,
         status: op.status,
         commitment,
+        proof, // B1 binding proof — the browser includes it in the deposit tx calldata
         asset,
         poolAddress: contract.poolAddress,
         chainId: chain.chain.id,
@@ -193,6 +199,32 @@ export function createApp(services: Services): Hono<Env> {
     const sk = randomFieldElement();
     const ownerPublicKey = await deriveOwnerPubKey(sk);
     return c.json({ spendingKey: sk.toString(), ownerPublicKey: ownerPublicKey.toString() }, 201);
+  });
+
+  // B4 — client-side spend proving support.
+  // Merkle inclusion path for a note, so the browser can build a spend witness itself.
+  app.get("/api/v1/notes/:id/path", async (c) => c.json(await engine.notePath(c.req.param("id"))));
+
+  // Submit a withdraw whose PLONK proof was generated in the browser (spending key never
+  // left the client). The server validates the note it holds for this wallet and relays the
+  // client's proof; the pool's on-chain verifier is the authority.
+  const WithdrawSubmitSchema = z.object({
+    noteId: z.string().min(1),
+    recipient: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+    root: z.string().min(1),
+    nullifier: z.string().min(1),
+    proof: z.array(z.string().regex(/^(0x)?[0-9a-fA-F]+$/)).length(24),
+  });
+  app.post("/api/v1/withdrawals/submit", async (c) => {
+    const body = WithdrawSubmitSchema.parse(await c.req.json());
+    const idem = c.req.header("idempotency-key") ?? null;
+    const op = await engine.createOperation(
+      "WITHDRAW",
+      { noteId: body.noteId, recipient: body.recipient, root: body.root, nullifier: body.nullifier },
+      idem,
+    );
+    const done = await engine.submitClientWithdraw(op, body.proof);
+    return c.json(sanitizeOperation(done));
   });
 
   app.post("/api/v1/deposits", async (c) => submit(c, "DEPOSIT", DepositSchema.parse(await c.req.json())));
