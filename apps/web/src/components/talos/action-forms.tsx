@@ -9,8 +9,12 @@ import { decodeKey } from "@/lib/talos/keys";
 import {
   loadClientNotes,
   proveDepositInBrowser,
+  proveMergeInBrowser,
+  proveSplitInBrowser,
+  proveTransferInBrowser,
   proveWithdrawInBrowser,
   rememberClientNote,
+  type ClientSpendProof,
 } from "@/lib/talos/client-prove";
 import {
   encodeApprove,
@@ -42,7 +46,6 @@ import {
   PageHeader,
   SubmitButton,
   TextInput,
-  useOperationSubmit,
 } from "@/components/talos/ui";
 import { cn } from "@/lib/utils";
 
@@ -298,13 +301,61 @@ export function ShieldForm() {
 
 /* --------------------------------- Split ------------------------------- */
 
+/** The client-note registry record for a note, if it's client-owned (spendable in-browser). */
+function clientRecFor(note: NotePublic | undefined): { noteIndex: number } | undefined {
+  if (!note) return undefined;
+  return loadClientNotes().find((r) => r.commitment === note.commitment);
+}
+
+/**
+ * Relay a browser-generated spend proof to the server and persist the caller's OWN output
+ * notes locally (so they can be re-derived and spent later). Returns the operation id.
+ */
+async function relayClientSpend(
+  op: "splits" | "transfers" | "merges",
+  inputNoteIds: string[],
+  cp: ClientSpendProof,
+  owner: string | undefined,
+): Promise<string> {
+  const res = await talosApi.spendSubmit(
+    op,
+    {
+      inputNoteIds,
+      root: cp.root,
+      nullifiers: cp.nullifiers,
+      outCommitments: cp.outputs.map((o) => o.commitment),
+      outputs: cp.outputs.map((o) => ({
+        commitment: o.commitment,
+        assetId: o.assetId,
+        value: o.value,
+        ownerPubKey: o.ownerPubKey,
+        mine: o.mine,
+      })),
+      proof: cp.proof,
+      ...(owner ? { owner } : {}),
+    },
+    newIdempotencyKey(),
+  );
+  for (const o of cp.outputs) {
+    if (o.mine) rememberClientNote({ commitment: o.commitment, noteIndex: o.index, assetId: o.assetId, amount: o.value });
+  }
+  return res.operationId;
+}
+
 export function SplitForm() {
   const { notes, isError, error, refetch } = useNotes();
+  const { address } = useWallet();
+  const { track } = useTrackedOperations();
+  const queryClient = useQueryClient();
   const [noteId, setNoteId] = useState("");
   const [a1, setA1] = useState("");
   const [a2, setA2] = useState("");
-  const { operationId, submit, pending, error: opError, reset } = useOperationSubmit();
+  const [step, setStep] = useState<string | null>(null);
+  const [opError, setOpError] = useState<string | null>(null);
+  const [operationId, setOperationId] = useState<string | null>(null);
   const note = useMemo(() => notes?.find((n) => n.id === noteId), [notes, noteId]);
+  const clientRec = useMemo(() => clientRecFor(note), [note]);
+  const pending = step !== null;
 
   const b1 = parseUnits(a1);
   const b2 = parseUnits(a2);
@@ -314,7 +365,56 @@ export function SplitForm() {
   if (isError) return <ErrorState message={String(error)} onRetry={refetch} />;
   if (!notes) return <p className="text-sm text-muted-foreground">Loading notes…</p>;
   if (notes.length === 0) return <NoNotes />;
-  if (operationId) return <Result operationId={operationId} title="Splitting note" onReset={reset} />;
+  if (operationId)
+    return (
+      <Result
+        operationId={operationId}
+        title="Splitting note"
+        onReset={() => {
+          setOperationId(null);
+          setNoteId("");
+          setA1("");
+          setA2("");
+          setStep(null);
+          setOpError(null);
+        }}
+      />
+    );
+
+  const run = async () => {
+    if (!valid || !note || b1 === null || b2 === null) return;
+    setOpError(null);
+    try {
+      if (clientRec) {
+        setStep("Fetching Merkle path…");
+        const path = await talosApi.notePath(noteId);
+        setStep("Sign + proving in your browser…");
+        const cp = await proveSplitInBrowser({
+          inNoteIndex: clientRec.noteIndex,
+          assetId: BigInt(note.assetId),
+          value: BigInt(note.value),
+          out1Value: BigInt(b1),
+          out2Value: BigInt(b2),
+          path,
+        });
+        setStep("Relaying…");
+        const id = await relayClientSpend("splits", [noteId], cp, address ?? undefined);
+        track(id);
+        void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
+        setOperationId(id);
+      } else {
+        setStep("Submitting…");
+        const ack = await talosApi.split({ noteId, amount1: b1, amount2: b2 }, newIdempotencyKey());
+        track(ack.operationId);
+        void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
+        setOperationId(ack.operationId);
+      }
+    } catch (e) {
+      setOpError(e instanceof Error ? e.message : "Split failed");
+    } finally {
+      setStep(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -329,14 +429,11 @@ export function SplitForm() {
         <p className={cn("mono text-xs", sumOk ? "text-primary" : "text-muted-foreground")}>
           {formatUnits(note.value)} {ASSET_SYMBOL} = {a1 || "0"} + {a2 || "0"}
           {note && !sumOk ? " · amounts must sum to the note value" : ""}
+          {clientRec ? " · non-custodial (proved in your browser)" : ""}
         </p>
       ) : null}
-      <SubmitButton
-        pending={pending}
-        disabled={!valid}
-        onClick={() => valid && submit(() => talosApi.split({ noteId, amount1: b1!, amount2: b2! }, newIdempotencyKey()))}
-      >
-        Split note
+      <SubmitButton pending={pending} disabled={!valid} onClick={() => void run()}>
+        {pending ? (step ?? "Working…") : "Split note"}
       </SubmitButton>
       {opError ? <p className="mono text-xs text-destructive">{opError}</p> : null}
     </div>
@@ -347,12 +444,23 @@ export function SplitForm() {
 
 export function MergeForm() {
   const { notes, isError, error, refetch } = useNotes();
+  const { address } = useWallet();
+  const { track } = useTrackedOperations();
+  const queryClient = useQueryClient();
   const [n1, setN1] = useState("");
   const [n2, setN2] = useState("");
-  const { operationId, submit, pending, error: opError, reset } = useOperationSubmit();
+  const [step, setStep] = useState<string | null>(null);
+  const [opError, setOpError] = useState<string | null>(null);
+  const [operationId, setOperationId] = useState<string | null>(null);
   const note1 = notes?.find((n) => n.id === n1);
   const note2 = notes?.find((n) => n.id === n2);
-  const valid = Boolean(note1 && note2 && n1 !== n2);
+  const rec1 = useMemo(() => clientRecFor(note1), [note1]);
+  const rec2 = useMemo(() => clientRecFor(note2), [note2]);
+  const pending = step !== null;
+  // Both inputs must share custody: a client-owned note can only be spent in-browser, a
+  // server-owned note only server-side — they cannot be merged together.
+  const custodyMatch = Boolean(note1 && note2 && Boolean(rec1) === Boolean(rec2));
+  const valid = Boolean(note1 && note2 && n1 !== n2 && custodyMatch);
   const sum = note1 && note2 ? (BigInt(note1.value) + BigInt(note2.value)).toString() : null;
 
   if (isError) return <ErrorState message={String(error)} onRetry={refetch} />;
@@ -360,7 +468,56 @@ export function MergeForm() {
   if (notes.length < 2) {
     return <EmptyState title="Need two notes to merge" description="Shield or split to create at least two available notes." />;
   }
-  if (operationId) return <Result operationId={operationId} title="Merging notes" onReset={reset} />;
+  if (operationId)
+    return (
+      <Result
+        operationId={operationId}
+        title="Merging notes"
+        onReset={() => {
+          setOperationId(null);
+          setN1("");
+          setN2("");
+          setStep(null);
+          setOpError(null);
+        }}
+      />
+    );
+
+  const run = async () => {
+    if (!valid || !note1 || !note2) return;
+    setOpError(null);
+    try {
+      if (rec1 && rec2) {
+        setStep("Fetching Merkle paths…");
+        const [path1, path2] = await Promise.all([talosApi.notePath(n1), talosApi.notePath(n2)]);
+        setStep("Sign + proving in your browser…");
+        const cp = await proveMergeInBrowser({
+          in1NoteIndex: rec1.noteIndex,
+          in2NoteIndex: rec2.noteIndex,
+          assetId: BigInt(note1.assetId),
+          value1: BigInt(note1.value),
+          value2: BigInt(note2.value),
+          path1,
+          path2,
+        });
+        setStep("Relaying…");
+        const id = await relayClientSpend("merges", [n1, n2], cp, address ?? undefined);
+        track(id);
+        void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
+        setOperationId(id);
+      } else {
+        setStep("Submitting…");
+        const ack = await talosApi.merge({ noteId1: n1, noteId2: n2 }, newIdempotencyKey());
+        track(ack.operationId);
+        void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
+        setOperationId(ack.operationId);
+      }
+    } catch (e) {
+      setOpError(e instanceof Error ? e.message : "Merge failed");
+    } finally {
+      setStep(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -375,15 +532,17 @@ export function MergeForm() {
       {sum ? (
         <p className="mono text-xs text-primary">
           {formatUnits(note1!.value)} + {formatUnits(note2!.value)} = {formatUnits(sum)} {ASSET_SYMBOL}
+          {rec1 && rec2 ? " · non-custodial (proved in your browser)" : ""}
         </p>
       ) : null}
       {n1 && n1 === n2 ? <p className="mono text-xs text-destructive">Choose two different notes.</p> : null}
-      <SubmitButton
-        pending={pending}
-        disabled={!valid}
-        onClick={() => valid && submit(() => talosApi.merge({ noteId1: n1, noteId2: n2 }, newIdempotencyKey()))}
-      >
-        Merge notes
+      {note1 && note2 && !custodyMatch ? (
+        <p className="mono text-xs text-destructive">
+          Can't merge a non-custodial note with a custodial one — pick two of the same kind.
+        </p>
+      ) : null}
+      <SubmitButton pending={pending} disabled={!valid} onClick={() => void run()}>
+        {pending ? (step ?? "Working…") : "Merge notes"}
       </SubmitButton>
       {opError ? <p className="mono text-xs text-destructive">{opError}</p> : null}
     </div>
@@ -394,11 +553,18 @@ export function MergeForm() {
 
 export function TransferForm() {
   const { notes, isError, error, refetch } = useNotes();
+  const { address } = useWallet();
+  const { track } = useTrackedOperations();
+  const queryClient = useQueryClient();
   const [noteId, setNoteId] = useState("");
   const [amount, setAmount] = useState("");
   const [pubKey, setPubKey] = useState("");
-  const { operationId, submit, pending, error: opError, reset } = useOperationSubmit();
+  const [step, setStep] = useState<string | null>(null);
+  const [opError, setOpError] = useState<string | null>(null);
+  const [operationId, setOperationId] = useState<string | null>(null);
   const note = notes?.find((n) => n.id === noteId);
+  const clientRec = useMemo(() => clientRecFor(note), [note]);
+  const pending = step !== null;
 
   const base = parseUnits(amount);
   const withinValue = note && base !== null && BigInt(base) <= BigInt(note.value) && BigInt(base) > 0n;
@@ -410,7 +576,60 @@ export function TransferForm() {
   if (isError) return <ErrorState message={String(error)} onRetry={refetch} />;
   if (!notes) return <p className="text-sm text-muted-foreground">Loading notes…</p>;
   if (notes.length === 0) return <NoNotes />;
-  if (operationId) return <Result operationId={operationId} title="Private transfer" onReset={reset} />;
+  if (operationId)
+    return (
+      <Result
+        operationId={operationId}
+        title="Private transfer"
+        onReset={() => {
+          setOperationId(null);
+          setNoteId("");
+          setAmount("");
+          setPubKey("");
+          setStep(null);
+          setOpError(null);
+        }}
+      />
+    );
+
+  const run = async () => {
+    if (!valid || !note || base === null || change === null || decodedPub === null) return;
+    setOpError(null);
+    try {
+      if (clientRec) {
+        setStep("Fetching Merkle path…");
+        const path = await talosApi.notePath(noteId);
+        setStep("Sign + proving in your browser…");
+        const cp = await proveTransferInBrowser({
+          inNoteIndex: clientRec.noteIndex,
+          assetId: BigInt(note.assetId),
+          value: BigInt(note.value),
+          out1Value: BigInt(base),
+          out2Value: BigInt(change),
+          recipientOwnerPubKey: BigInt(decodedPub),
+          path,
+        });
+        setStep("Relaying…");
+        const id = await relayClientSpend("transfers", [noteId], cp, address ?? undefined);
+        track(id);
+        void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
+        setOperationId(id);
+      } else {
+        setStep("Submitting…");
+        const ack = await talosApi.transfer(
+          { noteId, amount1: base, amount2: change, recipientOwnerPubKey: decodedPub },
+          newIdempotencyKey(),
+        );
+        track(ack.operationId);
+        void queryClient.invalidateQueries({ queryKey: ["talos", "notes"] });
+        setOperationId(ack.operationId);
+      }
+    } catch (e) {
+      setOpError(e instanceof Error ? e.message : "Transfer failed");
+    } finally {
+      setStep(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -434,20 +653,14 @@ export function TransferForm() {
       {pubKey && !validKey ? (
         <p className="mono text-xs text-destructive">That doesn't look like a valid tpub… key.</p>
       ) : null}
-      <SubmitButton
-        pending={pending}
-        disabled={!valid}
-        onClick={() =>
-          valid &&
-          submit(() =>
-            talosApi.transfer(
-              { noteId, amount1: base!, amount2: change!, recipientOwnerPubKey: decodedPub! },
-              newIdempotencyKey(),
-            ),
-          )
-        }
-      >
-        Send privately
+      {clientRec ? (
+        <p className="mono text-[11px] text-muted-foreground">
+          Non-custodial: proved in your browser. Note — recipient discovery of incoming notes
+          needs viewing-key note encryption (not yet shipped), so coordinate out-of-band for now.
+        </p>
+      ) : null}
+      <SubmitButton pending={pending} disabled={!valid} onClick={() => void run()}>
+        {pending ? (step ?? "Working…") : "Send privately"}
       </SubmitButton>
       {opError ? <p className="mono text-xs text-destructive">{opError}</p> : null}
     </div>
