@@ -1,10 +1,10 @@
 /**
  * SDK integration test — proves that proofs can be GENERATED and VERIFIED entirely through
- * the public @talos/sdk surface, exactly as an external consumer (CLI / agent) would:
+ * the public @zktalos/sdk surface, exactly as an external consumer (CLI / agent) would:
  *   signerFromPrivateKey → deriveTalosKeys → witness builders → provePlonk (fileArtifacts).
  * `provePlonk` self-verifies every proof off-chain, so a PASS means generate+verify both work.
  * Merkle paths (a runtime/server concern) use the zk test tree here. No server needed.
- * Run: `pnpm --filter @talos/sdk test:prove`.
+ * Run: `pnpm --filter @zktalos/sdk test:prove`.
  */
 import path from "path";
 import { fileURLToPath } from "url";
@@ -50,7 +50,7 @@ async function prove(circuit: string, witness: Record<string, string | string[]>
 }
 
 async function main() {
-  console.log("@talos/sdk — generate + verify proofs through the SDK:\n");
+  console.log("@zktalos/sdk — generate + verify proofs through the SDK:\n");
 
   // 1. Keys from a private-key signer, exactly as an agent/CLI would.
   const signer = signerFromPrivateKey(`0x${"11".repeat(32)}`);

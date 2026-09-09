@@ -1,4 +1,4 @@
-# @talos/sdk
+# @zktalos/sdk
 
 Client SDK for [Talos](https://github.com/cypherpulse/talos), a note-based private-asset
 protocol on X Layer. It handles key derivation, witness construction, and PLONK proving on the
@@ -16,7 +16,7 @@ The pure crypto — key derivation, witnesses, `provePlonk` over local artifacts
 server.
 
 ```ts
-import { TalosClient, signerFromPrivateKey, fileArtifacts } from "@talos/sdk";
+import { TalosClient, signerFromPrivateKey, fileArtifacts } from "@zktalos/sdk";
 
 const talos = new TalosClient({
   baseUrl: "https://talos-c4wi.onrender.com",
@@ -30,7 +30,7 @@ await talos.withdraw({ note, recipient: "0xabc…" });
 ## Install
 
 ```bash
-npm add @talos/sdk
+npm add @zktalos/sdk
 ```
 
 `snarkjs`, `poseidon-lite`, and `viem` are dependencies (installed for you). Requires Node 20+
@@ -57,7 +57,7 @@ note + Merkle path ──▶ witness ──▶ provePlonk ──▶ 24-word proo
 ### Node, CLI, agents
 
 ```ts
-import { TalosClient, signerFromPrivateKey, fileArtifacts } from "@talos/sdk";
+import { TalosClient, signerFromPrivateKey, fileArtifacts } from "@zktalos/sdk";
 
 const talos = new TalosClient({
   baseUrl: process.env.TALOS_API ?? "https://talos-c4wi.onrender.com",
@@ -80,7 +80,7 @@ const { outputs } = await talos.split({ note, amount1: "600000", amount2: "40000
 ### Browser
 
 ```ts
-import { TalosClient, signerFromInjected, httpArtifacts } from "@talos/sdk";
+import { TalosClient, signerFromInjected, httpArtifacts } from "@zktalos/sdk";
 
 const talos = new TalosClient({
   baseUrl: import.meta.env.VITE_TALOS_API_URL,

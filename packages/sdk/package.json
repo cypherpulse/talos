@@ -1,7 +1,7 @@
 {
-  "name": "@talos/sdk",
+  "name": "@zktalos/sdk",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "description": "Isomorphic, non-custodial client SDK for Talos — a ZK private asset protocol on X Layer. Client-side key derivation + PLONK proving for Node/CLI/agents and the browser.",
   "keywords": ["talos", "zk", "zero-knowledge", "plonk", "privacy", "x-layer", "web3", "sdk"],
   "license": "MIT",

@@ -1,9 +1,9 @@
 # Changelog
 
-All notable changes to `@talos/sdk` are documented here. This project adheres to
+All notable changes to `@zktalos/sdk` are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## 0.1.0 — Unreleased
+## 0.1.0 — 2026-09-09
 
 Initial release.
 
