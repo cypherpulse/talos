@@ -252,7 +252,24 @@ importers:
 
   packages/notes: {}
 
-  packages/sdk: {}
+  packages/sdk:
+    dependencies:
+      poseidon-lite:
+        specifier: ^0.3.0
+        version: 0.3.0
+      snarkjs:
+        specifier: ^0.7.5
+        version: 0.7.6
+      viem:
+        specifier: ^2.21.57
+        version: 2.55.19(typescript@5.9.3)(zod@3.25.76)
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
 
   packages/zk:
     dependencies:
