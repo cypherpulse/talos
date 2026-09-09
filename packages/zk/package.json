@@ -23,6 +23,7 @@
     "zk:negtest": "node scripts/neg-tests.mjs",
     "zk:clienttest": "tsx scripts/client-deposit.test.mts",
     "zk:withdrawtest": "tsx scripts/client-withdraw.test.mts",
+    "zk:spendstest": "tsx scripts/client-spends.test.mts",
     "zk:poseidon-check": "node scripts/poseidon-parity.mjs",
     "zk:all": "node scripts/build-circuits.mjs && node scripts/setup-plonk.mjs && node scripts/gen-vectors.mjs && node scripts/gen-fixtures.mjs"
   },
