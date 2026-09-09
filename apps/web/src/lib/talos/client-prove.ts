@@ -15,7 +15,18 @@ import { Buffer } from "buffer";
 import { poseidon1, poseidon2, poseidon5 } from "poseidon-lite";
 import { getInjected, type Eip1193 } from "./evm";
 import { deriveNoteNonce, deriveNoteSecret, deriveTalosKeys, TALOS_KEY_MESSAGE } from "./keys";
-import { depositArtifacts, depositWitness, withdrawWitness, type MerklePath, type Poseidon } from "./notes";
+import {
+  depositArtifacts,
+  depositWitness,
+  deriveOwnerPubKey,
+  mergeWitness,
+  splitWitness,
+  transferWitness,
+  withdrawWitness,
+  type MerklePath,
+  type OutputSpec,
+  type Poseidon,
+} from "./notes";
 import { provePlonk, type PlonkBackend } from "./proof";
 
 // snarkjs (loaded lazily below) expects a global Buffer in the browser.
@@ -194,4 +205,187 @@ export async function proveWithdrawInBrowser(params: {
   // Public signals (frozen): [root, nullifier, amount, recipient, assetId].
   if (publicSignals.length !== 5) throw new Error(`unexpected withdraw public-signal count: ${publicSignals.length}`);
   return { proof, root: publicSignals[0]!, nullifier: publicSignals[1]!, publicSignals, provingMs };
+}
+
+/* ---- Multi-output spends: split / transfer / merge (client-side) ---- */
+
+/** Sign the key message + derive the wallet's key tree (shared by the spend provers). */
+async function walletKeys() {
+  const provider = getInjected();
+  if (!provider) throw new Error("No browser wallet found — connect one first.");
+  const accounts = (await provider.request({ method: "eth_accounts" })) as string[];
+  const address = accounts?.[0];
+  if (!address) throw new Error("No wallet account available.");
+  const signature = await signKeyMessage(provider, address);
+  return deriveTalosKeys(signature);
+}
+
+const circuitUrls = (name: string) => ({
+  wasm: `/circuits/${name}/${name}_js/${name}.wasm`,
+  zkey: `/circuits/${name}/${name}_final.zkey`,
+  vkeyUrl: `/circuits/${name}/verification_key.json`,
+});
+
+async function fetchVkey(vkeyUrl: string): Promise<unknown> {
+  const r = await fetch(vkeyUrl);
+  if (!r.ok) throw new Error(`could not load verification key (${r.status})`);
+  return r.json();
+}
+
+/** An output note the spend created — enough to register + later re-derive/spend it. */
+export interface SpendOutput {
+  commitment: string;
+  index: number; // secret/nonce derivation index off the viewing key
+  assetId: string;
+  value: string;
+  ownerPubKey: string;
+  mine: boolean; // false = belongs to a counterparty (transfer out1), not the sender
+}
+
+export interface ClientSpendProof {
+  proof: string[];
+  root: string;
+  nullifiers: string[]; // [nullifier] for split/transfer, [n1, n2] for merge
+  outputs: SpendOutput[];
+  publicSignals: string[];
+  provingMs: number;
+}
+
+async function makeOutput(
+  vk: bigint,
+  index: number,
+  value: bigint,
+  ownerPubKey: bigint,
+  mine: boolean,
+  assetId: bigint,
+): Promise<{ spec: OutputSpec; out: Omit<SpendOutput, "commitment"> }> {
+  const spec: OutputSpec = {
+    value,
+    secret: await deriveNoteSecret(vk, index),
+    nonce: await deriveNoteNonce(vk, index),
+    ownerPubKey,
+  };
+  return { spec, out: { index, assetId: assetId.toString(), value: value.toString(), ownerPubKey: ownerPubKey.toString(), mine } };
+}
+
+/** Split one client-owned note into two same-owner notes (proved in-browser). */
+export async function proveSplitInBrowser(params: {
+  inNoteIndex: number;
+  assetId: bigint;
+  value: bigint;
+  out1Value: bigint;
+  out2Value: bigint;
+  path: MerklePath;
+}): Promise<ClientSpendProof> {
+  const keys = await walletKeys();
+  const plonk = await getPlonk();
+  const self = deriveOwnerPubKey(poseidon, keys.spendingKey);
+  const input = {
+    assetId: params.assetId,
+    value: params.value,
+    sk: keys.spendingKey,
+    secret: await deriveNoteSecret(keys.viewingKey, params.inNoteIndex),
+    nonce: await deriveNoteNonce(keys.viewingKey, params.inNoteIndex),
+  };
+  const base = Date.now();
+  const a = await makeOutput(keys.viewingKey, base, params.out1Value, self, true, params.assetId);
+  const b = await makeOutput(keys.viewingKey, base + 1, params.out2Value, self, true, params.assetId);
+  const witness = splitWitness(poseidon, input, params.path, a.spec, b.spec);
+  const { vkeyUrl, wasm, zkey } = circuitUrls("split");
+  const vkey = await fetchVkey(vkeyUrl);
+  const t0 = performance.now();
+  const { proof, publicSignals } = await provePlonk(plonk, wasm, zkey, vkey, witness);
+  return {
+    proof,
+    root: publicSignals[0]!,
+    nullifiers: [publicSignals[1]!],
+    outputs: [
+      { ...a.out, commitment: publicSignals[2]! },
+      { ...b.out, commitment: publicSignals[3]! },
+    ],
+    publicSignals,
+    provingMs: Math.round(performance.now() - t0),
+  };
+}
+
+/** Transfer: out1 to a recipient owner key, out2 self change (proved in-browser). */
+export async function proveTransferInBrowser(params: {
+  inNoteIndex: number;
+  assetId: bigint;
+  value: bigint;
+  out1Value: bigint;
+  out2Value: bigint;
+  recipientOwnerPubKey: bigint;
+  path: MerklePath;
+}): Promise<ClientSpendProof> {
+  const keys = await walletKeys();
+  const plonk = await getPlonk();
+  const self = deriveOwnerPubKey(poseidon, keys.spendingKey);
+  const input = {
+    assetId: params.assetId,
+    value: params.value,
+    sk: keys.spendingKey,
+    secret: await deriveNoteSecret(keys.viewingKey, params.inNoteIndex),
+    nonce: await deriveNoteNonce(keys.viewingKey, params.inNoteIndex),
+  };
+  const base = Date.now();
+  // out1 -> recipient (sender can't spend it; recipient discovery needs note encryption).
+  const a = await makeOutput(keys.viewingKey, base, params.out1Value, params.recipientOwnerPubKey, false, params.assetId);
+  const b = await makeOutput(keys.viewingKey, base + 1, params.out2Value, self, true, params.assetId);
+  const witness = transferWitness(poseidon, input, params.path, a.spec, b.spec);
+  const { vkeyUrl, wasm, zkey } = circuitUrls("transfer");
+  const vkey = await fetchVkey(vkeyUrl);
+  const t0 = performance.now();
+  const { proof, publicSignals } = await provePlonk(plonk, wasm, zkey, vkey, witness);
+  return {
+    proof,
+    root: publicSignals[0]!,
+    nullifiers: [publicSignals[1]!],
+    outputs: [
+      { ...a.out, commitment: publicSignals[2]! },
+      { ...b.out, commitment: publicSignals[3]! },
+    ],
+    publicSignals,
+    provingMs: Math.round(performance.now() - t0),
+  };
+}
+
+/** Merge two client-owned notes into one same-owner note (proved in-browser). */
+export async function proveMergeInBrowser(params: {
+  in1NoteIndex: number;
+  in2NoteIndex: number;
+  assetId: bigint;
+  value1: bigint;
+  value2: bigint;
+  path1: MerklePath;
+  path2: MerklePath;
+}): Promise<ClientSpendProof> {
+  const keys = await walletKeys();
+  const plonk = await getPlonk();
+  const self = deriveOwnerPubKey(poseidon, keys.spendingKey);
+  const mk = (idx: number, value: bigint) =>
+    Promise.all([deriveNoteSecret(keys.viewingKey, idx), deriveNoteNonce(keys.viewingKey, idx)]).then(([secret, nonce]) => ({
+      assetId: params.assetId,
+      value,
+      sk: keys.spendingKey,
+      secret,
+      nonce,
+    }));
+  const in1 = await mk(params.in1NoteIndex, params.value1);
+  const in2 = await mk(params.in2NoteIndex, params.value2);
+  const base = Date.now();
+  const out = await makeOutput(keys.viewingKey, base, params.value1 + params.value2, self, true, params.assetId);
+  const witness = mergeWitness(poseidon, in1, params.path1, in2, params.path2, out.spec);
+  const { vkeyUrl, wasm, zkey } = circuitUrls("merge");
+  const vkey = await fetchVkey(vkeyUrl);
+  const t0 = performance.now();
+  const { proof, publicSignals } = await provePlonk(plonk, wasm, zkey, vkey, witness);
+  return {
+    proof,
+    root: publicSignals[0]!,
+    nullifiers: [publicSignals[1]!, publicSignals[2]!],
+    outputs: [{ ...out.out, commitment: publicSignals[3]! }],
+    publicSignals,
+    provingMs: Math.round(performance.now() - t0),
+  };
 }
