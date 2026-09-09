@@ -2,6 +2,16 @@
   "name": "@talos/sdk",
   "version": "0.1.0",
   "private": true,
+  "description": "Isomorphic, non-custodial client SDK for Talos — a ZK private asset protocol on X Layer. Client-side key derivation + PLONK proving for Node/CLI/agents and the browser.",
+  "keywords": ["talos", "zk", "zero-knowledge", "plonk", "privacy", "x-layer", "web3", "sdk"],
+  "license": "MIT",
+  "homepage": "https://github.com/cypherpulse/talos/tree/main/packages/sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cypherpulse/talos.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": { "url": "https://github.com/cypherpulse/talos/issues" },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,10 +21,26 @@
       "default": "./dist/index.js"
     }
   },
+  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
+    "test:prove": "tsx scripts/prove.test.mts",
+    "prepublishOnly": "tsc -p tsconfig.json",
     "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "poseidon-lite": "^0.3.0",
+    "snarkjs": "^0.7.5",
+    "viem": "^2.21.57",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12"
   }
 }
