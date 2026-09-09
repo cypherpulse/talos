@@ -59,3 +59,7 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Local reference notes — not part of the repo
+okxcontrac.md
+tradingapi.md
