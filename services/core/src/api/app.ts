@@ -227,6 +227,53 @@ export function createApp(services: Services): Hono<Env> {
     return c.json(sanitizeOperation(done));
   });
 
+  // Client-proved multi-output spends (split / transfer / merge). The server relays the
+  // browser-generated proof and indexes the client-owned output notes.
+  const SpendSubmitSchema = z.object({
+    inputNoteIds: z.array(z.string().min(1)).min(1).max(2),
+    root: z.string().min(1),
+    nullifiers: z.array(z.string().min(1)).min(1).max(2),
+    outCommitments: z.array(z.string().min(1)).min(1).max(2),
+    outputs: z
+      .array(
+        z.object({
+          commitment: z.string().min(1),
+          assetId: z.string().regex(/^\d+$/),
+          value: z.string().regex(/^\d+$/),
+          ownerPubKey: z.string().min(1),
+          mine: z.boolean(),
+        }),
+      )
+      .min(1)
+      .max(2),
+    owner: z
+      .string()
+      .regex(/^0x[0-9a-fA-F]{40}$/)
+      .optional(),
+    proof: z.array(z.string().regex(/^(0x)?[0-9a-fA-F]+$/)).length(24),
+  });
+  const submitClientSpend = async (c: Context<Env>, type: OperationType) => {
+    const body = SpendSubmitSchema.parse(await c.req.json());
+    const idem = c.req.header("idempotency-key") ?? null;
+    const op = await engine.createOperation(
+      type,
+      { inputNoteIds: body.inputNoteIds, root: body.root, nullifiers: body.nullifiers },
+      idem,
+    );
+    const done = await engine.submitClientSpend(op, body.proof, {
+      inputNoteIds: body.inputNoteIds,
+      root: body.root,
+      nullifiers: body.nullifiers,
+      outCommitments: body.outCommitments,
+      outputs: body.outputs,
+      ...(body.owner ? { owner: body.owner } : {}),
+    });
+    return c.json(sanitizeOperation(done));
+  };
+  app.post("/api/v1/splits/submit", (c) => submitClientSpend(c, "SPLIT"));
+  app.post("/api/v1/transfers/submit", (c) => submitClientSpend(c, "TRANSFER"));
+  app.post("/api/v1/merges/submit", (c) => submitClientSpend(c, "MERGE"));
+
   app.post("/api/v1/deposits", async (c) => submit(c, "DEPOSIT", DepositSchema.parse(await c.req.json())));
   app.post("/api/v1/splits", async (c) => submit(c, "SPLIT", SplitSchema.parse(await c.req.json())));
   app.post("/api/v1/merges", async (c) => submit(c, "MERGE", MergeSchema.parse(await c.req.json())));
