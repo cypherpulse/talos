@@ -1,13 +1,35 @@
 /**
- * @talos/sdk
+ * @talos/sdk — the typed client SDK for Talos.
  *
- * The public client SDK for Talos — the typed surface that applications (the
- * agent, the frontend, external integrators) use to interact with the protocol.
- * It composes the lower-level packages (@talos/notes, @talos/zk, @talos/crypto)
- * and the on-chain X Layer service.
+ * Isomorphic (Node/CLI/agents + browser): key derivation is Web-Crypto-only, the REST client
+ * uses global `fetch`, and PLONK proving runs wherever the SDK runs. Non-custodial by design
+ * — the spending key is derived on the client from a wallet signature and never transmitted;
+ * the server relays client-generated proofs.
  *
- * Phase 1 is a placeholder. The SDK API is defined and implemented in later
- * phases and consumed by the frontend in Phase 10.
+ *   import { TalosApi, signerFromPrivateKey, deriveTalosKeys } from "@talos/sdk";
+ *
+ * The high-level `TalosClient` (ties signer + api + proving for one-call deposit/withdraw/
+ * split/merge/transfer) and the `talos` CLI build on these primitives.
  */
-
 export const SDK_PACKAGE = "@talos/sdk" as const;
+
+export * from "./types";
+export * from "./keys";
+export * from "./notes";
+export { poseidon } from "./poseidon";
+export { provePlonk, parsePlonkCalldata, type PlonkProofResult } from "./proof";
+export { TalosApi, TalosApiError, type TalosApiOptions, type SpendSubmitBody } from "./api";
+export {
+  signerFromPrivateKey,
+  signerFromInjected,
+  type TalosSigner,
+  type Eip1193Provider,
+} from "./signer";
+export { httpArtifacts, fileArtifacts, type ArtifactSource, type CircuitArtifacts } from "./artifacts";
+export {
+  TalosClient,
+  type TalosClientOptions,
+  type NoteRef,
+  type OutputRecord,
+  type DepositPrep,
+} from "./client";
