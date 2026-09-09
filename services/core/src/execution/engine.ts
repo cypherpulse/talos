@@ -552,6 +552,83 @@ export class ExecutionEngine {
     });
   }
 
+  /**
+   * B4 relay for multi-output spends (SPLIT / TRANSFER / MERGE) proved CLIENT-SIDE. The
+   * server never held a spending key; it locks the client-owned input note(s), relays the
+   * client's proof, then registers the resulting output commitments as client-owned notes
+   * (again no spending key). The pool's on-chain verifier enforces conservation, nullifier
+   * correctness, and membership; the server pins nothing it cannot know for a client note.
+   */
+  async submitClientSpend(
+    op0: OperationRecord,
+    clientProof: PlonkProof,
+    spend: {
+      inputNoteIds: string[];
+      root: string;
+      nullifiers: string[];
+      outCommitments: string[];
+      outputs: { commitment: string; assetId: string; value: string; ownerPubKey: string; mine: boolean }[];
+      owner?: string;
+    },
+  ): Promise<OperationRecord> {
+    const ids = spend.inputNoteIds;
+    const root = BigInt(spend.root).toString();
+
+    const body = async (): Promise<OperationRecord> => {
+      let op = await this.setStatus(op0, "VALIDATING");
+      for (const id of ids) await this.d.notes.lockClientNote(id);
+      op = await this.d.repos.operations.update({ ...op, noteIds: ids });
+      await this.ensureKnownRoot(root);
+      for (const nf of spend.nullifiers) await this.ensureNullifierUnspent(BigInt(nf).toString());
+
+      op = await this.setStatus(op, "PROOF_READY"); // proof came from the client
+      op = await this.setStatus(op, "READY_TO_SUBMIT");
+      op = await this.setStatus(op, "SUBMITTING");
+
+      const oc = spend.outCommitments.map((x) => BigInt(x));
+      const nf = spend.nullifiers.map((x) => BigInt(x));
+      const call = () => {
+        switch (op0.type) {
+          case "SPLIT":
+            return this.d.contract.split(clientProof, BigInt(root), nf[0]!, oc[0]!, oc[1]!);
+          case "TRANSFER":
+            return this.d.contract.transfer(clientProof, BigInt(root), nf[0]!, oc[0]!, oc[1]!);
+          case "MERGE":
+            return this.d.contract.merge(clientProof, BigInt(root), nf[0]!, nf[1]!, oc[0]!);
+          default:
+            throw InvalidRequest(`unsupported client spend op ${op0.type}`);
+        }
+      };
+      const tx = await this.d.txManager.submitAndConfirm(op.id, this.d.contract.poolAddress, call);
+      op = await this.setStatus(op, "SUBMITTED", { txHash: tx.txHash });
+      op = await this.setStatus(op, "CONFIRMING");
+      op = await this.setStatus(op, "CONFIRMED");
+
+      for (const id of ids) await this.d.notes.markSpent(id);
+      // Register the created output notes (client-owned; server holds no spend secret) and
+      // attach their on-chain leaf indices after syncing the tree.
+      const outIds: string[] = [];
+      for (const out of spend.outputs) {
+        const note = await this.d.notes.createClientNote({
+          assetId: BigInt(out.assetId),
+          value: BigInt(out.value),
+          commitment: out.commitment,
+          ownerPubKey: out.ownerPubKey,
+          owner: out.mine ? spend.owner : undefined,
+        });
+        await this.d.notes.markAvailable(note.id, await this.resolveLeafIndex(note.commitment));
+        outIds.push(note.id);
+      }
+      return this.setStatus(op, "FINALIZED", {
+        result: { inputNoteIds: ids, outputNoteIds: outIds, txHash: tx.txHash },
+      });
+    };
+
+    // Lock all inputs (at most two) before running.
+    if (ids.length === 2) return this.d.locks.withLock(ids[0]!, () => this.d.locks.withLock(ids[1]!, body));
+    return this.d.locks.withLock(ids[0]!, body);
+  }
+
   /** Validate proof public signals exactly match the intended values (§17/§18). */
   private assertPublicSignals(actual: string[], expected: string[]): void {
     const norm = (x: string) => BigInt(x).toString();
