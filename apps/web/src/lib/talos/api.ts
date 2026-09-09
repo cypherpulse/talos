@@ -161,6 +161,19 @@ export const talosApi = {
     body: { noteId: string; recipient: string; root: string; nullifier: string; proof: string[] },
     key?: string,
   ) => request<OperationView>("/api/v1/withdrawals/submit", { method: "POST", body, idempotencyKey: key }),
+  spendSubmit: (
+    op: "splits" | "transfers" | "merges",
+    body: {
+      inputNoteIds: string[];
+      root: string;
+      nullifiers: string[];
+      outCommitments: string[];
+      outputs: { commitment: string; assetId: string; value: string; ownerPubKey: string; mine: boolean }[];
+      owner?: string;
+      proof: string[];
+    },
+    key?: string,
+  ) => request<OperationView>(`/api/v1/${op}/submit`, { method: "POST", body, idempotencyKey: key }),
 
   guardIdentity: () => request<GuardIdentity>("/guard/identity"),
   guardDecisions: () => request<{ decisions: GuardDecisionRecord[] }>("/guard/decisions"),
